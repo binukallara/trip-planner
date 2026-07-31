@@ -1,4 +1,4 @@
-<!-- Trip Planner with Share Trip (Link + PIN) -->
+<!-- Trip Planner with Firebase + Auto-delete expired trips (15 days) -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -8,16 +8,21 @@
 
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
-
   <meta name="theme-color" content="#0b0e14">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <!-- Leaflet CSS & JS -->
+  <!-- ========== FIREBASE SDK (Compat) ========== -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js">
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js">
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js">
+  </script>
+
+  <!-- Leaflet & Routing -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Routing Machine -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 
@@ -34,7 +39,6 @@
     /* ========== RESET & BASE ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
-
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #1a1f29; }
     ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 8px; }
@@ -107,19 +111,6 @@
       display: block;
       width: 100%;
     }
-    #navInstructions .instructions-summary {
-      padding: 6px 0 10px 0;
-      border-bottom: 1px solid #2d3a4f;
-      margin-bottom: 10px;
-      font-size: 16px;
-      color: #60a5fa;
-      font-weight: 500;
-    }
-    #navInstructions .instructions-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
     #navInstructions .instruction-step {
       display: flex;
       flex-wrap: wrap;
@@ -129,34 +120,11 @@
       font-size: 16px;
       gap: 4px 10px;
     }
-    #navInstructions .instruction-step:last-child {
-      border-bottom: none;
-    }
-    #navInstructions .step-number {
-      color: #94a3b8;
-      font-weight: 600;
-      min-width: 30px;
-      font-size: 14px;
-    }
-    #navInstructions .step-text {
-      flex: 1;
-      color: #f1f5f9;
-      font-weight: 500;
-    }
-    #navInstructions .step-distance {
-      color: #60a5fa;
-      font-weight: 500;
-      font-size: 13px;
-      background: #0b1119;
-      padding: 1px 10px;
-      border-radius: 20px;
-      white-space: nowrap;
-    }
-    #navInstructions .step-time {
-      color: #94a3b8;
-      font-size: 12px;
-      white-space: nowrap;
-    }
+    #navInstructions .instruction-step:last-child { border-bottom: none; }
+    #navInstructions .step-number { color: #94a3b8; font-weight: 600; min-width: 30px; font-size: 14px; }
+    #navInstructions .step-text { flex: 1; color: #f1f5f9; font-weight: 500; }
+    #navInstructions .step-distance { color: #60a5fa; font-weight: 500; font-size: 13px; background: #0b1119; padding: 1px 10px; border-radius: 20px; white-space: nowrap; }
+    #navInstructions .step-time { color: #94a3b8; font-size: 12px; white-space: nowrap; }
 
     /* ========== LISTS & ITEMS ========== */
     .list-item { background: #111a24; border-radius: 12px; padding: 14px 18px; border-left: 4px solid #3b82f6; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
@@ -184,1345 +152,1206 @@
     .page.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* ========== SHARE MODAL ========== */
-    .modal-overlay {
-      display: none;
+    /* ========== AUTH / JOIN MODAL ========== */
+    .auth-overlay {
+      display: flex;
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
-      z-index: 9999;
+      background: rgba(0,0,0,0.85);
+      z-index: 99999;
       justify-content: center;
       align-items: center;
-      animation: fadeIn 0.3s ease;
+      animation: fadeIn 0.4s ease;
     }
-    .modal-overlay.active {
-      display: flex;
-    }
-    .modal-box {
+    .auth-box {
       background: #171f2a;
       border: 1px solid #2d3a4f;
-      border-radius: 20px;
-      padding: 30px;
-      max-width: 500px;
+      border-radius: 24px;
+      padding: 40px 30px;
+      max-width: 420px;
       width: 90%;
+      text-align: center;
       color: #e2e8f0;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.9);
     }
-    .modal-box h2 {
-      font-size: 20px;
-      margin-bottom: 16px;
-      color: #fff;
+    .auth-box h2 { font-size: 24px; margin-bottom: 8px; color: #fff; }
+    .auth-box h2 i { color: #3b82f6; margin-right: 10px; }
+    .auth-box p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
+    .auth-box .input-group { justify-content: center; }
+    .auth-box .input-group input {
+      text-align: center;
+      font-size: 24px;
+      letter-spacing: 8px;
+      max-width: 180px;
+      padding: 12px;
     }
-    .modal-box h2 i {
-      color: #3b82f6;
-      margin-right: 10px;
-    }
-    .modal-box .share-item {
-      background: #0b1119;
-      padding: 12px 16px;
-      border-radius: 12px;
-      margin-bottom: 12px;
-      border: 1px solid #2a364a;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .modal-box .share-item .label {
-      color: #94a3b8;
-      font-size: 13px;
-      font-weight: 500;
-    }
-    .modal-box .share-item .value {
-      font-size: 16px;
-      font-weight: 600;
-      color: #f1f5f9;
-      word-break: break-all;
-    }
-    .modal-box .share-item .value.pin {
-      font-size: 28px;
-      letter-spacing: 6px;
-      color: #facc15;
-    }
-    .modal-box .btn-group {
+    .auth-box .btn-group {
       display: flex;
       gap: 12px;
-      margin-top: 8px;
+      justify-content: center;
       flex-wrap: wrap;
+      margin-top: 12px;
     }
-    .modal-box .btn-group button {
-      flex: 1;
-      padding: 10px;
+    .auth-box .btn-group button {
+      padding: 12px 28px;
       border: none;
       border-radius: 30px;
       font-weight: 600;
+      font-size: 15px;
       cursor: pointer;
-      font-size: 14px;
       transition: 0.2s;
       color: #fff;
+      flex: 1;
+      min-width: 120px;
     }
-    .modal-box .btn-group .copy-btn {
-      background: #3b82f6;
-    }
-    .modal-box .btn-group .copy-btn:hover {
-      background: #2563eb;
-    }
-    .modal-box .btn-group .close-btn {
-      background: #ef4444;
-    }
-    .modal-box .btn-group .close-btn:hover {
-      background: #dc2626;
-    }
+    .auth-box .btn-group .primary-btn { background: #3b82f6; }
+    .auth-box .btn-group .primary-btn:hover { background: #2563eb; }
+    .auth-box .btn-group .secondary-btn { background: #10b981; }
+    .auth-box .btn-group .secondary-btn:hover { background: #059669; }
+    .auth-box .error-msg { color: #ef4444; font-size: 14px; margin-top: 12px; min-height: 20px; }
 
     @media (max-width: 700px) { 
       .grid-2 { grid-template-columns: 1fr; } 
       .input-group { flex-direction: column; align-items: stretch; }
-      #navInstructions { font-size: 14px; padding: 12px 16px; min-height: 60px; }
-      #navInstructions .instruction-step { font-size: 14px; }
-      .modal-box { padding: 20px; }
+      .auth-box { padding: 30px 20px; }
     }
   </style>
 </head>
 <body>
-  <div id="trip-app"></div>
+
+  <!-- ========== AUTH / JOIN SCREEN ========== -->
+  <div id="authScreen" class="auth-overlay">
+    <div class="auth-box">
+      <h2><i class="fas fa-plane-departure"></i> Trip Planner</h2>
+      <p>Start a new trip or join an existing one with a PIN.</p>
+      <div class="input-group">
+        <input type="text" id="pinInput" maxlength="4" placeholder="Enter PIN" inputmode="numeric" pattern="[0-9]*">
+      </div>
+      <div id="authError" class="error-msg"></div>
+      <div class="btn-group">
+        <button class="secondary-btn" id="joinTripBtn"><i class="fas fa-sign-in-alt"></i> Join Trip</button>
+        <button class="primary-btn" id="newTripBtn"><i class="fas fa-plus"></i> New Trip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== MAIN APP ========== -->
+  <div id="trip-app" style="display:none;"></div>
 
   <script>
-    (function() {
-      // ========== DATA ==========
-      let appData = {
-        tripName: 'New Trip',
-        tripDate: new Date().toISOString().split('T')[0],
-        participants: [],
-        itinerary: [],
-        expenses: []
-      };
+    // ======================================================
+    // 1. FIREBASE CONFIG (YOUR CONFIG)
+    // ======================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDHFcRRJo_OzuPla9TTLQKTqP0psyrVU1Y",
+      authDomain: "trip-planner-cacaf.firebaseapp.com",
+      databaseURL: "https://trip-planner-cacaf-default-rtdb.firebaseio.com",
+      projectId: "trip-planner-cacaf",
+      storageBucket: "trip-planner-cacaf.firebasestorage.app",
+      messagingSenderId: "829860320918",
+      appId: "1:829860320918:web:4062460a825314a49414b7",
+      measurementId: "G-0MX66HVEK7"
+    };
 
-      let mapInstance = null;
-      let mapMarkers = [];
-      let mapPolyline = null;
-      let routingControl = null;
-      let userMarker = null;
-      let tempMarker = null;
-      let watchId = null;
-      let isNavigating = false;
+    // ======================================================
+    // 2. INIT FIREBASE
+    // ======================================================
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const auth = firebase.auth();
 
-      // ========== SHARE DATA ==========
-      let shareData = {
-        link: '',
-        pin: ''
-      };
+    let currentTripPin = null;
+    let isSyncing = false;
+    let isLocalUpdate = false;
 
-      // ========== HELPERS ==========
-      function generateId() { return Date.now() + Math.random().toString(36); }
-      function saveData() { try { localStorage.setItem('tripData', JSON.stringify(appData)); } catch(e) {} }
-      function loadData() {
+    // ======================================================
+    // 3. MAIN APP DATA
+    // ======================================================
+    let appData = {
+      tripName: 'New Trip',
+      tripDate: new Date().toISOString().split('T')[0],
+      participants: [],
+      itinerary: [],
+      expenses: [],
+      createdAt: Date.now()
+    };
+
+    let mapInstance = null;
+    let mapMarkers = [];
+    let mapPolyline = null;
+    let routingControl = null;
+    let userMarker = null;
+    let tempMarker = null;
+    let watchId = null;
+    let isNavigating = false;
+
+    // ======================================================
+    // 4. CLEANUP EXPIRED TRIPS (15 days)
+    // ======================================================
+    function cleanupExpiredTrips() {
+      const now = Date.now();
+      const expiryMs = 15 * 24 * 60 * 60 * 1000; // 15 days
+
+      const storedPin = localStorage.getItem('tripPin');
+      const storedData = localStorage.getItem('tripData');
+      if (storedPin && storedData) {
         try {
-          const stored = localStorage.getItem('tripData');
-          if (stored) { const p = JSON.parse(stored); appData = p; }
-        } catch(e) {}
-        if (!appData.participants) appData.participants = [];
-        if (!appData.itinerary) appData.itinerary = [];
-        if (!appData.expenses) appData.expenses = [];
-        if (!appData.tripName) appData.tripName = 'New Trip';
-        if (!appData.tripDate) appData.tripDate = new Date().toISOString().split('T')[0];
-      }
-      loadData();
-
-      // ========== RENDER FUNCTIONS ==========
-      function renderParticipants() {
-        const c = document.getElementById('participantChips');
-        if (!c) return;
-        c.innerHTML = appData.participants.map(p =>
-          `<div class="chip">${p} <span class="remove-chip" data-action="removePart" data-name="${p}"><i class="fas fa-times"></i></span></div>`
-        ).join('');
-        updateSelects();
-        updateStats();
-      }
-
-      function updateSelects() {
-        const paidBy = document.getElementById('expPaidBy');
-        if (!paidBy) return;
-        const opts = appData.participants.map(p => `<option value="${p}">${p}</option>`).join('');
-        paidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
-        renderExpenses();
-      }
-
-      function renderItinerary() {
-        const c = document.getElementById('itineraryList');
-        if (!c) return;
-        if (appData.itinerary.length === 0) {
-          c.innerHTML = '<div style="color:#64748b;padding:16px;">No places added yet.</div>';
-        } else {
-          c.innerHTML = appData.itinerary.map((item, idx) => `
-            <div class="list-item" style="border-left-color:#10b981;">
-              <div class="info">
-                <div class="title">📍 ${item.name}</div>
-                <div class="sub">🕒 ${item.time || 'Time not set'} | Lat: ${item.lat || 'N/A'}, Lng: ${item.lng || 'N/A'}</div>
-                <div class="sub">${item.desc || ''}</div>
-              </div>
-              <div><button class="btn-danger" style="border:none;padding:4px 12px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeItin" data-idx="${idx}"><i class="fas fa-trash"></i></button></div>
-            </div>
-          `).join('');
-        }
-        document.getElementById('itineraryCount').innerText = `(${appData.itinerary.length} places)`;
-        document.getElementById('dashPlaceCount').innerText = appData.itinerary.length;
-        updateMapMarkers();
-        saveData();
-      }
-
-      function renderExpenses() {
-        const c = document.getElementById('expenseList');
-        if (!c) return;
-        if (appData.expenses.length === 0) {
-          c.innerHTML = '<div style="color:#64748b;padding:16px;">No expenses recorded.</div>';
-        } else {
-          c.innerHTML = appData.expenses.map((exp, idx) => {
-            let receiptHtml = '';
-            if (exp.receipt) {
-              const isImage = exp.receipt.startsWith('data:image');
-              const isPdf = exp.receipt.startsWith('data:application/pdf');
-              if (isImage) {
-                receiptHtml = `<img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" onclick="window.open('${exp.receipt}','_blank')" />`;
-              } else if (isPdf) {
-                receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file-pdf"></i> Receipt</a>`;
-              } else {
-                receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file"></i> Receipt</a>`;
-              }
-            }
-            return `
-              <div class="list-item" style="border-left-color:#facc15;">
-                <div class="info">
-                  <div class="title">${exp.desc}</div>
-                  <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
-                  ${receiptHtml ? `<div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>` : ''}
-                </div>
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
-                  <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
-                </div>
-              </div>
-            `;
-          }).join('');
-        }
-        updateStats();
-        saveData();
-      }
-
-      function updateStats() {
-        document.getElementById('dashParticipantCount').innerText = appData.participants.length;
-        const total = appData.expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
-        document.getElementById('dashTotalCost').innerHTML = '₹' + total.toFixed(2);
-        document.getElementById('tripStatus').innerHTML = appData.participants.length > 0 ? `👥 ${appData.participants.length} members` : '⚡ Add members';
-      }
-
-      // ========== MAP & NAVIGATION ==========
-      function initMap() {
-        const defaultLoc = [10.089, 77.059];
-        if (typeof L === 'undefined') {
-          document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;">⚠️ Leaflet library not loaded.</div>';
-          return;
-        }
-        if (mapInstance) {
-          mapInstance.remove();
-          mapInstance = null;
-        }
-        mapInstance = L.map('map', { center: defaultLoc, zoom: 10, zoomControl: true });
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(mapInstance);
-        L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
-
-        mapInstance.on('click', function(e) {
-          const lat = e.latlng.lat.toFixed(6);
-          const lng = e.latlng.lng.toFixed(6);
-          document.getElementById('placeLat').value = lat;
-          document.getElementById('placeLng').value = lng;
-          if (tempMarker) mapInstance.removeLayer(tempMarker);
-          tempMarker = L.marker(e.latlng, { draggable: true })
-            .addTo(mapInstance)
-            .bindPopup(`Lat: ${lat}<br>Lng: ${lng}`)
-            .openPopup();
-          tempMarker.on('dragend', function() {
-            const pos = tempMarker.getLatLng();
-            document.getElementById('placeLat').value = pos.lat.toFixed(6);
-            document.getElementById('placeLng').value = pos.lng.toFixed(6);
-          });
-        });
-
-        if (isNavigating) {
-          startLiveTracking();
-        }
-        updateMapMarkers();
-      }
-
-      function parseInstructions(routes) {
-        if (!routes || routes.length === 0) return { steps: [], totalDistance: 0, totalTime: 0 };
-        const route = routes[0];
-        let steps = [];
-        let totalDistance = 0;
-        let totalTime = 0;
-        if (route.summary) {
-          totalDistance = route.summary.totalDistance || 0;
-          totalTime = route.summary.totalTime || 0;
-        }
-        if (route.legs && route.legs.length > 0) {
-          route.legs.forEach(leg => {
-            if (leg.steps) {
-              steps = steps.concat(leg.steps);
-            }
-          });
-        } else if (route.steps) {
-          steps = route.steps;
-        } else if (route.instructions) {
-          steps = route.instructions;
-        }
-        return { steps, totalDistance, totalTime };
-      }
-
-      function updateInstructionsDisplay(steps, totalDistance, totalTime) {
-        const container = document.getElementById('navInstructions');
-        if (!container) return;
-        if (!steps || steps.length === 0) {
-          container.innerHTML = '<span class="placeholder">No turn-by-turn instructions available.</span>';
-          return;
-        }
-        let html = '';
-        steps.forEach((step, idx) => {
-          let text = step.instruction || step.text || step.name || '';
-          let distance = step.distance || 0;
-          let time = step.duration || 0;
-          text = text.replace(/\s+/g, ' ').trim();
-          let distStr = '';
-          if (distance > 0) {
-            if (distance >= 1000) {
-              distStr = (distance / 1000).toFixed(1) + ' km';
-            } else {
-              distStr = Math.round(distance) + ' m';
-            }
+          const data = JSON.parse(storedData);
+          if (data.createdAt && (now - data.createdAt) > expiryMs) {
+            console.log('⚠️ Local trip expired, removing...');
+            localStorage.removeItem('tripPin');
+            localStorage.removeItem('tripData');
           }
-          let timeStr = '';
-          if (time > 0) {
-            if (time >= 60) {
-              const mins = Math.floor(time / 60);
-              const secs = Math.round(time % 60);
-              timeStr = mins + ' min';
-              if (secs > 0) timeStr += ' ' + secs + 's';
-            } else {
-              timeStr = Math.round(time) + 's';
-            }
-          }
-          html += `
-            <div class="instruction-step">
-              <span class="step-number">${idx + 1}.</span>
-              <span class="step-text">${text}</span>
-              ${distStr ? `<span class="step-distance">${distStr}</span>` : ''}
-              ${timeStr ? `<span class="step-time">${timeStr}</span>` : ''}
-            </div>
-          `;
-        });
-        let summary = '';
-        if (totalDistance > 0) {
-          const distKm = (totalDistance / 1000).toFixed(1);
-          summary += `📏 <strong>${distKm} km</strong>`;
-        }
-        if (totalTime > 0) {
-          const mins = Math.floor(totalTime / 60);
-          summary += ` ⏱️ <strong>${mins} min</strong>`;
-        }
-        container.innerHTML = `
-          <div class="instructions-summary">${summary}</div>
-          <div class="instructions-list">${html}</div>
-        `;
+        } catch (e) {}
       }
 
-      function updateMapMarkers() {
-        if (!mapInstance) return;
-        mapMarkers.forEach(marker => { if (mapInstance.hasLayer(marker)) mapInstance.removeLayer(marker); });
-        mapMarkers = [];
-        if (routingControl) {
-          mapInstance.removeControl(routingControl);
-          routingControl = null;
-        }
-        if (appData.itinerary.length === 0) {
-          mapInstance.setView([10.089, 77.059], 10);
-          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route and instructions.</span>';
-          return;
-        }
-        const waypoints = [];
-        const latlngs = [];
-        appData.itinerary.forEach((item, idx) => {
-          const lat = parseFloat(item.lat);
-          const lng = parseFloat(item.lng);
-          if (isNaN(lat) || isNaN(lng)) return;
-          const pos = [lat, lng];
-          latlngs.push(pos);
-          waypoints.push(L.latLng(lat, lng));
-          const marker = L.marker(pos, { title: item.name })
-            .bindPopup(`<b>${item.name}</b><br>${item.desc || ''}`)
-            .addTo(mapInstance);
-          mapMarkers.push(marker);
-        });
-        if (latlngs.length === 1) {
-          mapInstance.setView(latlngs[0], 12);
-          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add more places to plan a route.</span>';
-        } else if (latlngs.length > 1) {
-          try {
-            routingControl = L.Routing.control({
-              waypoints: waypoints,
-              routeWhileDragging: false,
-              showAlternatives: false,
-              fitSelectedRoutes: true,
-              addWaypoints: false,
-              draggableWaypoints: false,
-              show: false,
-              createMarker: function() { return null; },
-              lineOptions: {
-                styles: [{ color: '#3b82f6', weight: 4, opacity: 0.8 }]
-              },
-              router: L.Routing.osrmv1({
-                serviceUrl: 'https://router.project-osrm.org/route/v1'
-              })
-            }).addTo(mapInstance);
-            routingControl.on('routesfound', function(e) {
-              const routes = e.routes;
-              if (!routes || routes.length === 0) {
-                document.getElementById('navInstructions').innerHTML = '<span class="placeholder">No route found.</span>';
-                return;
-              }
-              const { steps, totalDistance, totalTime } = parseInstructions(routes);
-              updateInstructionsDisplay(steps, totalDistance, totalTime);
-            });
-            routingControl.on('routingerror', function(e) {
-              document.getElementById('navInstructions').innerHTML = '<span style="color:#ef4444;">❌ Could not calculate route. Try different locations.</span>';
-            });
-            setTimeout(() => {
-              if (routingControl) routingControl.route();
-            }, 500);
-          } catch (e) {
-            console.error('Routing error:', e);
-            if (latlngs.length > 0) {
-              mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
-              const bounds = L.latLngBounds(latlngs);
-              mapInstance.fitBounds(bounds, { padding: [30, 30] });
-            }
-            document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Routing unavailable. Showing simple path.</span>';
+      database.ref('trips').once('value').then(snapshot => {
+        if (!snapshot.exists()) return;
+        const trips = snapshot.val();
+        const toDelete = [];
+        for (const [pin, trip] of Object.entries(trips)) {
+          if (trip.createdAt && (now - trip.createdAt) > expiryMs) {
+            toDelete.push(pin);
           }
         }
-        if (userMarker && !mapInstance.hasLayer(userMarker)) {
-          userMarker.addTo(mapInstance);
+        if (toDelete.length > 0) {
+          console.log(`🗑️ Deleting ${toDelete.length} expired trips from Firebase.`);
+          const updates = {};
+          toDelete.forEach(pin => { updates['trips/' + pin] = null; });
+          database.ref().update(updates);
         }
-      }
+      }).catch(err => console.warn('Cleanup error:', err));
+    }
 
-      // ========== LIVE TRACKING ==========
-      function startLiveTracking() {
-        if (!navigator.geolocation) {
-          document.getElementById('locationStatus').innerHTML = '❌ GPS not supported.';
-          return;
-        }
-        if (watchId) {
-          navigator.geolocation.clearWatch(watchId);
-          watchId = null;
-        }
-        document.getElementById('locationStatus').innerHTML = '📍 GPS Active...';
-        watchId = navigator.geolocation.watchPosition(
-          (pos) => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            const accuracy = pos.coords.accuracy;
-            document.getElementById('locationStatus').innerHTML =
-              `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (accuracy: ${Math.round(accuracy)}m)`;
-            if (mapInstance) {
-              if (userMarker) {
-                userMarker.setLatLng([lat, lng]);
-              } else {
-                const icon = L.divIcon({
-                  className: 'fa-solid fa-location-dot',
-                  iconSize: [24, 24],
-                  html: '<i class="fas fa-location-dot" style="color:#3b82f6;font-size:28px;text-shadow:0 0 10px rgba(59,130,246,0.5);"></i>'
-                });
-                userMarker = L.marker([lat, lng], { icon: icon, title: 'You are here' })
-                  .addTo(mapInstance)
-                  .bindPopup('📍 You are here!');
-              }
-              if (isNavigating) {
-                mapInstance.flyTo([lat, lng], 15, { duration: 1 });
-              }
-            }
-          },
-          (err) => {
-            document.getElementById('locationStatus').innerHTML = `❌ GPS Error: ${err.message}`;
-            watchId = null;
-          }, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 5000
-          }
-        );
-      }
+    // ======================================================
+    // 5. AUTH / JOIN LOGIC
+    // ======================================================
+    function showAuthScreen() {
+      document.getElementById('authScreen').style.display = 'flex';
+      document.getElementById('trip-app').style.display = 'none';
+    }
 
-      function stopLiveTracking() {
-        if (watchId) {
-          navigator.geolocation.clearWatch(watchId);
-          watchId = null;
-          document.getElementById('locationStatus').innerHTML = '⏹️ GPS stopped.';
-        }
-        if (userMarker && mapInstance) {
-          mapInstance.removeLayer(userMarker);
-          userMarker = null;
-        }
-      }
+    function hideAuthScreen() {
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('trip-app').style.display = 'block';
+    }
 
-      function toggleNavigation() {
-        if (isNavigating) {
-          isNavigating = false;
-          stopLiveTracking();
-          document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-play"></i> Start Navigation';
-          document.getElementById('navToggleBtn').className = 'btn-success';
-          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Navigation stopped.</span>';
-          return;
-        }
-        if (appData.itinerary.length < 2) {
-          alert('Please add at least 2 places to your itinerary for navigation.');
-          return;
-        }
-        isNavigating = true;
-        document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-stop"></i> Stop Navigation';
-        document.getElementById('navToggleBtn').className = 'btn-danger';
-        if (!watchId) {
-          startLiveTracking();
-        } else {
-          if (userMarker) {
-            const latlng = userMarker.getLatLng();
-            mapInstance.flyTo(latlng, 15, { duration: 1 });
-          }
-        }
-        if (routingControl) {
-          routingControl.route();
-        }
-      }
+    function setError(msg) { document.getElementById('authError').textContent = msg; }
 
-      // ========== SHARE TRIP (Link + PIN) ==========
-      function generateShareLink() {
-        // Check if there's data to share
-        const hasData = appData.participants.length > 0 || appData.itinerary.length > 0 || appData.expenses.length > 0;
-        if (!hasData) {
-          alert('Add some data (participants, itinerary, expenses) before sharing.');
-          return;
-        }
+    function clearError() { document.getElementById('authError').textContent = ''; }
 
-        // Generate 4-digit PIN
-        const pin = String(Math.floor(1000 + Math.random() * 9000));
-        shareData.pin = pin;
+    function generatePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
 
-        // Prepare data to share (exclude receipts - they can be large)
-        const shareableData = {
-          tripName: appData.tripName,
-          tripDate: appData.tripDate,
-          participants: appData.participants,
-          itinerary: appData.itinerary.map(item => ({
-            name: item.name,
-            time: item.time,
-            lat: item.lat,
-            lng: item.lng,
-            desc: item.desc
-          })),
-          expenses: appData.expenses.map(exp => ({
-            desc: exp.desc,
-            amount: exp.amount,
-            paidBy: exp.paidBy
-            // receipt not included to keep URL small
-          }))
+    function checkTripExists(pin) {
+      return database.ref('trips/' + pin).once('value').then(snapshot => snapshot.exists());
+    }
+
+    function createNewTrip() {
+      clearError();
+      cleanupExpiredTrips();
+
+      const pin = generatePin();
+      checkTripExists(pin).then(exists => {
+        if (exists) { createNewTrip(); return; }
+        const newTripData = {
+          tripName: 'My Trip',
+          tripDate: new Date().toISOString().split('T')[0],
+          participants: [],
+          itinerary: [],
+          expenses: [],
+          createdAt: firebase.database.ServerValue.TIMESTAMP
         };
-
-        // Encode to Base64
-        const jsonStr = JSON.stringify(shareableData);
-        const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
-
-        // Build share URL
-        const baseUrl = window.location.origin + window.location.pathname;
-        const shareUrl = baseUrl + '?share=' + encoded + '&pin=' + pin;
-
-        shareData.link = shareUrl;
-
-        // Show modal with link and pin
-        document.getElementById('shareLinkDisplay').textContent = shareUrl;
-        document.getElementById('sharePinDisplay').textContent = pin;
-        document.getElementById('shareModal').classList.add('active');
-      }
-
-      function copyShareLink() {
-        const link = document.getElementById('shareLinkDisplay').textContent;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(link).then(() => {
-            alert('Link copied to clipboard!');
-          }).catch(() => {
-            fallbackCopy(link);
-          });
-        } else {
-          fallbackCopy(link);
-        }
-      }
-
-      function fallbackCopy(text) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        alert('Link copied!');
-      }
-
-      function closeShareModal() {
-        document.getElementById('shareModal').classList.remove('active');
-      }
-
-      // ========== LOAD SHARED TRIP FROM URL ==========
-      function loadSharedTrip() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const encodedData = urlParams.get('share');
-        const pinParam = urlParams.get('pin');
-
-        if (encodedData && pinParam) {
-          // Prompt for PIN
-          const userPin = prompt('Enter the PIN to access this trip:');
-          if (userPin === null) {
-            // User cancelled
-            window.history.replaceState({}, document.title, window.location.pathname);
-            return;
-          }
-          if (userPin !== pinParam) {
-            alert('❌ Incorrect PIN. Access denied.');
-            window.history.replaceState({}, document.title, window.location.pathname);
-            return;
-          }
-
-          // PIN correct, load data
-          try {
-            const jsonStr = decodeURIComponent(escape(atob(encodedData)));
-            const data = JSON.parse(jsonStr);
-
-            // Update appData
-            appData.tripName = data.tripName || 'Shared Trip';
-            appData.tripDate = data.tripDate || new Date().toISOString().split('T')[0];
-            appData.participants = data.participants || [];
-            appData.itinerary = data.itinerary || [];
-            appData.expenses = data.expenses || [];
-
-            // Save to localStorage
-            saveData();
-
-            // Re-render UI
-            renderParticipants();
-            renderItinerary();
-            renderExpenses();
-            updateStats();
-            updateSelects();
-
-            // Update header fields
-            document.getElementById('tripName').value = appData.tripName;
-            document.getElementById('tripDate').value = appData.tripDate;
-
-            // Update map
-            updateMapMarkers();
-
-            // Clean URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-
-            alert('✅ Trip loaded successfully!');
-          } catch (e) {
-            console.error('Error loading shared trip:', e);
-            alert('❌ Failed to load shared trip. The link may be corrupted.');
-          }
-        }
-      }
-
-      // ========== SEARCH ==========
-      function searchPlace() {
-        const query = document.getElementById('placeName').value.trim();
-        if (!query) {
-          alert('Please enter a place name to search.');
-          return;
-        }
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-        document.getElementById('searchStatus').innerHTML = '🔍 Searching...';
-        fetch(url)
-          .then(res => res.json())
-          .then(data => {
-            if (data && data.length > 0) {
-              const result = data[0];
-              const lat = parseFloat(result.lat).toFixed(6);
-              const lng = parseFloat(result.lon).toFixed(6);
-              document.getElementById('placeName').value = result.display_name || query;
-              document.getElementById('placeLat').value = lat;
-              document.getElementById('placeLng').value = lng;
-              document.getElementById('searchStatus').innerHTML = '✅ Found!';
-              if (mapInstance) {
-                if (tempMarker) mapInstance.removeLayer(tempMarker);
-                tempMarker = L.marker([lat, lng], { draggable: true })
-                  .addTo(mapInstance)
-                  .bindPopup(`Lat: ${lat}<br>Lng: ${lng}`)
-                  .openPopup();
-                mapInstance.setView([lat, lng], 13);
-                tempMarker.on('dragend', function() {
-                  const pos = tempMarker.getLatLng();
-                  document.getElementById('placeLat').value = pos.lat.toFixed(6);
-                  document.getElementById('placeLng').value = pos.lng.toFixed(6);
-                });
-              }
-            } else {
-              document.getElementById('searchStatus').innerHTML = '❌ Not found. Try manual entry.';
-            }
-          })
-          .catch(err => {
-            console.error(err);
-            document.getElementById('searchStatus').innerHTML = '❌ Search failed.';
-          });
-      }
-
-      // ========== SETTLEMENT ==========
-      function getSettlementData() {
-        const participants = appData.participants;
-        const expenses = appData.expenses;
-        const totalPaid = {};
-        participants.forEach(p => totalPaid[p] = 0);
-        expenses.forEach(exp => {
-          const amt = parseFloat(exp.amount);
-          if (totalPaid[exp.paidBy] !== undefined) totalPaid[exp.paidBy] += amt;
+        return database.ref('trips/' + pin).set(newTripData).then(() => {
+          currentTripPin = pin;
+          appData = newTripData;
+          localStorage.setItem('tripData', JSON.stringify(appData));
+          localStorage.setItem('tripPin', pin);
+          hideAuthScreen();
+          buildUI();
+          setTimeout(() => showShareModal(pin), 500);
         });
-        const totalCost = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
-        const share = participants.length > 0 ? totalCost / participants.length : 0;
-        const netBalance = {};
-        participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
-        return { participants, totalPaid, totalCost, share, netBalance };
-      }
+      }).catch(err => { console.error(err);
+        setError('Failed to create trip: ' + err.message); });
+    }
 
-      function calculateSettlements() {
-        const container = document.getElementById('settlementTransactions');
-        const summary = document.getElementById('settlementSummary');
-        const participants = appData.participants;
-        if (participants.length === 0) { container.innerHTML = '<div style="color:#ef4444;">Add participants first!</div>'; return; }
-        if (appData.expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
-        const { totalPaid, totalCost, share, netBalance } = getSettlementData();
-        summary.innerHTML = `
-          <div class="stat-box"><div class="label">Total Cost</div><div class="value blue">₹${totalCost.toFixed(2)}</div></div>
-          <div class="stat-box"><div class="label">Per Person Share</div><div class="value">₹${share.toFixed(2)}</div></div>
-          ${participants.map(p => `
-            <div class="stat-box">
-              <div class="label">${p} (Paid ₹${totalPaid[p].toFixed(2)})</div>
-              <div class="value ${netBalance[p] >= 0 ? 'green' : 'red'}">${netBalance[p] >= 0 ? '+' : ''}${netBalance[p].toFixed(2)}</div>
-            </div>
-          `).join('')}
-        `;
-        let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
-        let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
-        let transactions = [];
-        let i = 0, j = 0;
-        while (i < payers.length && j < receivers.length) {
-          let payer = payers[i], receiver = receivers[j];
-          let settleAmt = Math.min(payer.amount, receiver.amount);
-          if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
-          payer.amount -= settleAmt; receiver.amount -= settleAmt;
-          if (payer.amount < 0.01) i++;
-          if (receiver.amount < 0.01) j++;
-        }
-        if (transactions.length === 0) {
-          container.innerHTML = '<div style="color:#34d399;font-weight:600;">✅ All settled! Everyone paid their exact share.</div>';
-        } else {
-          container.innerHTML = transactions.map(t => `
-            <div class="settlement-item">
-              <div><span class="from">${t.from}</span> <i class="fas fa-arrow-right" style="color:#94a3b8;margin:0 12px;"></i> <span class="to">${t.to}</span></div>
-              <div class="s-amount">₹${t.amount.toFixed(2)}</div>
-            </div>
-          `).join('');
-        }
+    function joinTrip() {
+      clearError();
+      const pinInput = document.getElementById('pinInput');
+      const pin = pinInput.value.trim();
+      if (!pin || pin.length !== 4 || isNaN(pin)) {
+        setError('Please enter a valid 4-digit PIN.');
+        return;
       }
+      cleanupExpiredTrips();
 
-      // ========== PDF EXPORT ==========
-      function exportPDF() {
-        const participants = appData.participants;
-        if (participants.length === 0) { alert('Add participants first!'); return; }
-        if (appData.expenses.length === 0) { alert('No expenses to report.'); return; }
-        if (typeof html2canvas === 'undefined') {
-          alert('html2canvas library not loaded. Please refresh and try again.');
+      database.ref('trips/' + pin).once('value').then(snapshot => {
+        if (!snapshot.exists()) {
+          setError('Trip not found with this PIN.');
           return;
         }
-        if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
-          alert('jsPDF library not loaded. Please refresh and try again.');
+        const data = snapshot.val();
+        const now = Date.now();
+        const expiryMs = 15 * 24 * 60 * 60 * 1000;
+        if (data.createdAt && (now - data.createdAt) > expiryMs) {
+          database.ref('trips/' + pin).remove().then(() => {
+            setError('❌ This trip has expired (15 days). Deleted from server.');
+          });
           return;
         }
-        const { totalPaid, totalCost, share, netBalance } = getSettlementData();
-        let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
-        let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
-        let transactions = [];
-        let i = 0, j = 0;
-        while (i < payers.length && j < receivers.length) {
-          let payer = payers[i], receiver = receivers[j];
-          let settleAmt = Math.min(payer.amount, receiver.amount);
-          if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
-          payer.amount -= settleAmt; receiver.amount -= settleAmt;
-          if (payer.amount < 0.01) i++;
-          if (receiver.amount < 0.01) j++;
+        currentTripPin = pin;
+        appData = data;
+        localStorage.setItem('tripData', JSON.stringify(appData));
+        localStorage.setItem('tripPin', pin);
+        hideAuthScreen();
+        buildUI();
+        startRealtimeListener(pin);
+      }).catch(err => { console.error(err);
+        setError('Error joining trip: ' + err.message); });
+    }
+
+    // ======================================================
+    // 6. REAL-TIME LISTENER
+    // ======================================================
+    function startRealtimeListener(pin) {
+      if (isSyncing) return;
+      isSyncing = true;
+
+      database.ref('trips/' + pin).on('value', (snapshot) => {
+        if (!snapshot.exists()) {
+          localStorage.removeItem('tripPin');
+          localStorage.removeItem('tripData');
+          alert('This trip has been deleted from the server.');
+          window.location.reload();
+          return;
         }
-        const currency = '₹';
-        const rows = appData.expenses.map((exp, idx) => `
-          <tr>
-            <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:center;">${idx+1}</td>
-            <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.desc}</td>
-            <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${parseFloat(exp.amount).toFixed(2)}</td>
-            <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.paidBy}</td>
-          </tr>
+        const remoteData = snapshot.val();
+        if (isLocalUpdate) { isLocalUpdate = false; return; }
+        appData = remoteData;
+        localStorage.setItem('tripData', JSON.stringify(appData));
+        reRenderAll();
+      }, (error) => { console.error('Firebase sync error:', error); });
+    }
+
+    function syncToFirebase() {
+      if (!currentTripPin) return;
+      isLocalUpdate = true;
+      if (!appData.createdAt) {
+        appData.createdAt = firebase.database.ServerValue.TIMESTAMP;
+      }
+      database.ref('trips/' + currentTripPin).set(appData).catch(err => {
+        console.error('Sync error:', err);
+        isLocalUpdate = false;
+      });
+    }
+
+    function reRenderAll() {
+      document.getElementById('tripName').value = appData.tripName || '';
+      document.getElementById('tripDate').value = appData.tripDate || '';
+      renderParticipants();
+      renderItinerary();
+      renderExpenses();
+      updateStats();
+      updateSelects();
+      if (mapInstance) updateMapMarkers();
+      const settlePage = document.getElementById('page-settlements');
+      if (settlePage && settlePage.classList.contains('active')) calculateSettlements();
+    }
+
+    // ======================================================
+    // 7. SHARE MODAL
+    // ======================================================
+    function showShareModal(pin) {
+      const modal = document.createElement('div');
+      modal.id = 'shareModal';
+      modal.style.cssText = `
+        display:flex; position:fixed; top:0; left:0; width:100%; height:100%;
+        background:rgba(0,0,0,0.7); z-index:99999; justify-content:center; align-items:center;
+        animation:fadeIn 0.3s ease;
+      `;
+      modal.innerHTML = `
+        <div class="auth-box" style="max-width:450px; background:#171f2a; border:1px solid #2d3a4f; border-radius:24px; padding:30px; text-align:center; color:#e2e8f0; box-shadow:0 30px 80px rgba(0,0,0,0.9);">
+          <h2 style="font-size:24px; margin-bottom:8px; color:#fff;"><i class="fas fa-share-alt" style="color:#8b5cf6; margin-right:10px;"></i> Share Your Trip</h2>
+          <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Share this PIN with your team to join this trip in real-time.</p>
+          <div style="background:#0b1119; padding:16px; border-radius:16px; border:1px solid #2a364a; margin-bottom:20px;">
+            <div style="color:#94a3b8; font-size:13px; font-weight:500;">🔑 Your Trip PIN</div>
+            <div style="font-size:42px; font-weight:700; color:#facc15; letter-spacing:12px; margin-top:4px;">${pin}</div>
+          </div>
+          <div style="margin-top:12px; color:#64748b; font-size:12px;">Share this PIN via WhatsApp, Email, or any messaging app.</div>
+          <button onclick="this.closest('#shareModal').remove()" style="margin-top:16px; padding:12px 28px; border:none; border-radius:30px; font-weight:600; font-size:15px; cursor:pointer; color:#fff; background:#3b82f6;">Got it</button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) modal.remove();
+      });
+    }
+
+    // ======================================================
+    // 8. RENDER FUNCTIONS
+    // ======================================================
+    function renderParticipants() {
+      const c = document.getElementById('participantChips');
+      if (!c) return;
+      c.innerHTML = appData.participants.map(p =>
+        `<div class="chip">${p} <span class="remove-chip" data-action="removePart" data-name="${p}"><i class="fas fa-times"></i></span></div>`
+      ).join('');
+      updateSelects();
+      updateStats();
+    }
+
+    function updateSelects() {
+      const paidBy = document.getElementById('expPaidBy');
+      if (!paidBy) return;
+      const opts = appData.participants.map(p => `<option value="${p}">${p}</option>`).join('');
+      paidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
+      renderExpenses();
+    }
+
+    function renderItinerary() {
+      const c = document.getElementById('itineraryList');
+      if (!c) return;
+      if (appData.itinerary.length === 0) {
+        c.innerHTML = '<div style="color:#64748b;padding:16px;">No places added yet.</div>';
+      } else {
+        c.innerHTML = appData.itinerary.map((item, idx) => `
+          <div class="list-item" style="border-left-color:#10b981;">
+            <div class="info">
+              <div class="title">📍 ${item.name}</div>
+              <div class="sub">🕒 ${item.time || 'Time not set'} | Lat: ${item.lat || 'N/A'}, Lng: ${item.lng || 'N/A'}</div>
+              <div class="sub">${item.desc || ''}</div>
+            </div>
+            <div><button class="btn-danger" style="border:none;padding:4px 12px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeItin" data-idx="${idx}"><i class="fas fa-trash"></i></button></div>
+          </div>
         `).join('');
-        const balanceRows = participants.map(p => {
-          const bal = netBalance[p];
-          const color = bal >= 0 ? '#16a34a' : '#dc2626';
+      }
+      document.getElementById('itineraryCount').innerText = `(${appData.itinerary.length} places)`;
+      document.getElementById('dashPlaceCount').innerText = appData.itinerary.length;
+      updateMapMarkers();
+    }
+
+    function renderExpenses() {
+      const c = document.getElementById('expenseList');
+      if (!c) return;
+      if (appData.expenses.length === 0) {
+        c.innerHTML = '<div style="color:#64748b;padding:16px;">No expenses recorded.</div>';
+      } else {
+        c.innerHTML = appData.expenses.map((exp, idx) => {
+          let receiptHtml = '';
+          if (exp.receipt) {
+            const isImage = exp.receipt.startsWith('data:image');
+            const isPdf = exp.receipt.startsWith('data:application/pdf');
+            if (isImage) {
+              receiptHtml = `<img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" onclick="window.open('${exp.receipt}','_blank')" />`;
+            } else if (isPdf) {
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file-pdf"></i> Receipt</a>`;
+            } else {
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file"></i> Receipt</a>`;
+            }
+          }
           return `
-            <tr>
-              <td style="padding:6px 10px; border:1px solid #d1d5db;">${p}</td>
-              <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${totalPaid[p].toFixed(2)}</td>
-              <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right; color:${color}; font-weight:600;">${bal >= 0 ? '+' : ''}${currency}${bal.toFixed(2)}</td>
-            </tr>
+            <div class="list-item" style="border-left-color:#facc15;">
+              <div class="info">
+                <div class="title">${exp.desc}</div>
+                <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
+                ${receiptHtml ? `<div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>` : ''}
+              </div>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
+                <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
+              </div>
+            </div>
           `;
         }).join('');
-        const txnRows = transactions.map(t => `
-          <tr>
-            <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.from}</td>
-            <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.to}</td>
-            <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${t.amount.toFixed(2)}</td>
-          </tr>
-        `).join('');
-        const htmlContent = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Settlement Report</title>
-            <style>
-              body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 30px; background: #ffffff; color: #1e293b; }
-              .container { max-width: 700px; margin: 0 auto; }
-              h1 { text-align: center; color: #1e293b; font-size: 22px; margin-bottom: 4px; }
-              .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px; }
-              .section { margin: 20px 0; }
-              .section-title { font-size: 16px; font-weight: 600; border-bottom: 2px solid #3b82f6; padding-bottom: 4px; margin-bottom: 10px; }
-              table { width: 100%; border-collapse: collapse; font-size: 13px; }
-              th { background: #f1f5f9; padding: 6px 10px; border: 1px solid #d1d5db; text-align: left; font-weight: 600; }
-              td { padding: 6px 10px; border: 1px solid #d1d5db; }
-              .summary-box { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 12px 0; }
-              .summary-item { background: #f8fafc; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; flex: 1; min-width: 100px; }
-              .summary-item .label { font-size: 12px; color: #64748b; }
-              .summary-item .value { font-size: 20px; font-weight: 700; color: #0f172a; }
-              .participant-badge { display: inline-block; background: #e2e8f0; padding: 2px 12px; border-radius: 20px; font-size: 13px; margin: 2px; }
-              .footer { text-align: center; color: #94a3b8; font-size: 11px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <h1>📊 Trip Settlement Report</h1>
-              <div class="subtitle">${appData.tripName} — ${appData.tripDate}</div>
-              <div class="section">
-                <div class="section-title">👥 Participants</div>
-                <div style="display:flex; flex-wrap:wrap; gap:4px;">
-                  ${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}
-                </div>
-              </div>
-              <div class="section">
-                <div class="section-title">💰 Shared Expenses</div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th style="width:40px; text-align:center;">#</th>
-                      <th>Description</th>
-                      <th style="text-align:right;">Amount</th>
-                      <th>Paid By</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${rows || '<tr><td colspan="4" style="text-align:center;">No expenses recorded.</td></tr>'}
-                  </tbody>
-                </table>
-              </div>
-              <div class="section">
-                <div class="section-title">📈 Summary</div>
-                <div class="summary-box">
-                  <div class="summary-item">
-                    <div class="label">Total Cost</div>
-                    <div class="value">${currency}${totalCost.toFixed(2)}</div>
-                  </div>
-                  <div class="summary-item">
-                    <div class="label">Per Person Share</div>
-                    <div class="value">${currency}${share.toFixed(2)}</div>
-                  </div>
-                </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Participant</th>
-                      <th style="text-align:right;">Total Paid</th>
-                      <th style="text-align:right;">Net Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${balanceRows}
-                  </tbody>
-                </table>
-              </div>
-              <div class="section">
-                <div class="section-title">🔄 Settlement Transactions</div>
-                ${transactions.length > 0 ? `
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>From</th>
-                        <th>To</th>
-                        <th style="text-align:right;">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${txnRows}
-                    </tbody>
-                  </table>
-                  <div style="margin-top:6px; font-size:13px; color:#475569;">Total transactions: ${transactions.length}</div>
-                ` : `
-                  <p style="color:#16a34a; font-weight:600;">✅ All settled! Everyone paid their exact share.</p>
-                `}
-              </div>
-              <div class="footer">
-                This settlement was calculated by SplitEasy. All amounts are rounded to 2 decimal places.
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
-        const tempDiv = document.createElement('div');
-        tempDiv.style.position = 'fixed';
-        tempDiv.style.left = '-9999px';
-        tempDiv.style.top = '0';
-        tempDiv.style.width = '750px';
-        tempDiv.style.background = '#ffffff';
-        tempDiv.style.zIndex = '9999';
-        tempDiv.style.padding = '20px';
-        tempDiv.innerHTML = htmlContent;
-        document.body.appendChild(tempDiv);
-        html2canvas(tempDiv, {
-          scale: 2,
-          backgroundColor: '#ffffff',
-          useCORS: true,
-          logging: false,
-          width: 750,
-          height: tempDiv.scrollHeight,
-        }).then(canvas => {
-          let jsPDFConstructor = null;
-          if (window.jspdf && typeof window.jspdf.jsPDF === 'function') {
-            jsPDFConstructor = window.jspdf.jsPDF;
-          } else if (window.jsPDF && typeof window.jsPDF === 'function') {
-            jsPDFConstructor = window.jsPDF;
-          } else if (typeof jsPDF === 'function') {
-            jsPDFConstructor = jsPDF;
-          }
-          if (!jsPDFConstructor) {
-            document.body.removeChild(tempDiv);
-            alert('jsPDF library not found.');
-            return;
-          }
-          const imgData = canvas.toDataURL('image/jpeg', 0.95);
-          const doc = new jsPDFConstructor('p', 'mm', 'a4');
-          const pdfWidth = 210;
-          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-          doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-          doc.save(`Settlement_${appData.tripName || 'Trip'}.pdf`);
-          document.body.removeChild(tempDiv);
-        }).catch(err => {
-          console.error(err);
-          document.body.removeChild(tempDiv);
-          alert('PDF generation failed: ' + err.message);
+      }
+      updateStats();
+    }
+
+    function updateStats() {
+      document.getElementById('dashParticipantCount').innerText = appData.participants.length;
+      const total = appData.expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+      document.getElementById('dashTotalCost').innerHTML = '₹' + total.toFixed(2);
+      document.getElementById('tripStatus').innerHTML = appData.participants.length > 0 ? `👥 ${appData.participants.length} members` : '⚡ Add members';
+    }
+
+    // ======================================================
+    // 9. MAP & NAVIGATION
+    // ======================================================
+    function initMap() {
+      const defaultLoc = [10.089, 77.059];
+      if (typeof L === 'undefined') {
+        document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;">⚠️ Leaflet library not loaded.</div>';
+        return;
+      }
+      if (mapInstance) { mapInstance.remove();
+        mapInstance = null; }
+      mapInstance = L.map('map', { center: defaultLoc, zoom: 10, zoomControl: true });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(mapInstance);
+      L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
+      mapInstance.on('click', function(e) {
+        const lat = e.latlng.lat.toFixed(6);
+        const lng = e.latlng.lng.toFixed(6);
+        document.getElementById('placeLat').value = lat;
+        document.getElementById('placeLng').value = lng;
+        if (tempMarker) mapInstance.removeLayer(tempMarker);
+        tempMarker = L.marker(e.latlng, { draggable: true })
+          .addTo(mapInstance)
+          .bindPopup(`Lat: ${lat}<br>Lng: ${lng}`)
+          .openPopup();
+        tempMarker.on('dragend', function() {
+          const pos = tempMarker.getLatLng();
+          document.getElementById('placeLat').value = pos.lat.toFixed(6);
+          document.getElementById('placeLng').value = pos.lng.toFixed(6);
         });
-      }
+      });
+      if (isNavigating) startLiveTracking();
+      updateMapMarkers();
+    }
 
-      // ========== START NEW TRIP ==========
-      function startNewTrip() {
-        if (!confirm('Are you sure you want to clear all data and start a new trip?')) return;
-        appData.tripName = 'New Trip';
-        appData.tripDate = new Date().toISOString().split('T')[0];
-        appData.participants = [];
-        appData.itinerary = [];
-        appData.expenses = [];
-        localStorage.removeItem('tripData');
-        if (isNavigating) {
-          isNavigating = false;
-          stopLiveTracking();
-          const btn = document.getElementById('navToggleBtn');
-          if (btn) {
-            btn.innerHTML = '<i class="fas fa-play"></i> Start Navigation';
-            btn.className = 'btn-success';
+    function parseInstructions(routes) {
+      if (!routes || routes.length === 0) return { steps: [], totalDistance: 0, totalTime: 0 };
+      const route = routes[0];
+      let steps = [];
+      let totalDistance = 0;
+      let totalTime = 0;
+      if (route.summary) {
+        totalDistance = route.summary.totalDistance || 0;
+        totalTime = route.summary.totalTime || 0;
+      }
+      if (route.legs && route.legs.length > 0) {
+        route.legs.forEach(leg => { if (leg.steps) steps = steps.concat(leg.steps); });
+      } else if (route.steps) {
+        steps = route.steps;
+      } else if (route.instructions) {
+        steps = route.instructions;
+      }
+      return { steps, totalDistance, totalTime };
+    }
+
+    function updateInstructionsDisplay(steps, totalDistance, totalTime) {
+      const container = document.getElementById('navInstructions');
+      if (!container) return;
+      if (!steps || steps.length === 0) {
+        container.innerHTML = '<span class="placeholder">No turn-by-turn instructions available.</span>';
+        return;
+      }
+      let html = '';
+      steps.forEach((step, idx) => {
+        let text = step.instruction || step.text || step.name || '';
+        let distance = step.distance || 0;
+        let time = step.duration || 0;
+        text = text.replace(/\s+/g, ' ').trim();
+        let distStr = '';
+        if (distance > 0) {
+          if (distance >= 1000) distStr = (distance / 1000).toFixed(1) + ' km';
+          else distStr = Math.round(distance) + ' m';
+        }
+        let timeStr = '';
+        if (time > 0) {
+          if (time >= 60) {
+            const mins = Math.floor(time / 60);
+            const secs = Math.round(time % 60);
+            timeStr = mins + ' min' + (secs > 0 ? ' ' + secs + 's' : '');
+          } else {
+            timeStr = Math.round(time) + 's';
           }
         }
-        renderParticipants();
-        renderItinerary();
-        renderExpenses();
-        updateStats();
-        updateSelects();
-        document.getElementById('tripName').value = appData.tripName;
-        document.getElementById('tripDate').value = appData.tripDate;
-        if (mapInstance) {
-          mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
-          mapMarkers = [];
-          if (mapPolyline && mapInstance.hasLayer(mapPolyline)) mapInstance.removeLayer(mapPolyline);
-          mapPolyline = null;
-          if (routingControl) {
-            mapInstance.removeControl(routingControl);
-            routingControl = null;
-          }
-          mapInstance.setView([10.089, 77.059], 10);
-        }
-        document.getElementById('settlementSummary').innerHTML = '';
-        document.getElementById('settlementTransactions').innerHTML = '';
+        html += `
+          <div class="instruction-step">
+            <span class="step-number">${idx + 1}.</span>
+            <span class="step-text">${text}</span>
+            ${distStr ? `<span class="step-distance">${distStr}</span>` : ''}
+            ${timeStr ? `<span class="step-time">${timeStr}</span>` : ''}
+          </div>
+        `;
+      });
+      let summary = '';
+      if (totalDistance > 0) summary += `📏 <strong>${(totalDistance/1000).toFixed(1)} km</strong>`;
+      if (totalTime > 0) summary += ` ⏱️ <strong>${Math.floor(totalTime/60)} min</strong>`;
+      container.innerHTML = `
+        <div class="instructions-summary">${summary}</div>
+        <div class="instructions-list">${html}</div>
+      `;
+    }
+
+    function updateMapMarkers() {
+      if (!mapInstance) return;
+      mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
+      mapMarkers = [];
+      if (routingControl) { mapInstance.removeControl(routingControl);
+        routingControl = null; }
+      if (appData.itinerary.length === 0) {
+        mapInstance.setView([10.089, 77.059], 10);
         document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route and instructions.</span>';
-        switchPage('dashboard');
-        saveData();
+        return;
       }
-
-      // ========== CRUD ==========
-      function addParticipant() {
-        const input = document.getElementById('participantInput');
-        const name = input.value.trim();
-        if (!name) return alert('Enter a name.');
-        if (appData.participants.includes(name)) return alert('Already exists.');
-        appData.participants.push(name);
-        input.value = '';
-        renderParticipants(); updateSelects(); updateStats(); saveData();
-      }
-
-      function removeParticipant(name) {
-        if (!confirm(`Remove ${name}?`)) return;
-        appData.participants = appData.participants.filter(p => p !== name);
-        renderParticipants(); updateSelects(); updateStats(); saveData();
-      }
-
-      function addPlace() {
-        const name = document.getElementById('placeName').value.trim();
-        const time = document.getElementById('placeTime').value;
-        const lat = document.getElementById('placeLat').value.trim();
-        const lng = document.getElementById('placeLng').value.trim();
-        const desc = document.getElementById('placeDesc').value.trim();
-        if (!name) return alert('Enter place name.');
-        if (!lat || !lng) return alert('Please enter Latitude and Longitude (use search or click map).');
-        appData.itinerary.push({ id: generateId(), name, time, lat, lng, desc });
-        document.getElementById('placeName').value = '';
-        document.getElementById('placeTime').value = '';
-        document.getElementById('placeLat').value = '';
-        document.getElementById('placeLng').value = '';
-        document.getElementById('placeDesc').value = '';
-        if (tempMarker) { mapInstance.removeLayer(tempMarker); tempMarker = null; }
-        renderItinerary();
-        saveData();
-      }
-
-      function removeItinerary(idx) {
-        appData.itinerary.splice(idx, 1);
-        renderItinerary();
-        saveData();
-      }
-
-      // ========== EXPENSES ==========
-      function addExpense() {
-        const desc = document.getElementById('expDesc').value.trim();
-        const amount = parseFloat(document.getElementById('expAmount').value);
-        const paidBy = document.getElementById('expPaidBy').value;
-        const fileInput = document.getElementById('expReceipt');
-        const file = fileInput.files[0];
-        if (!desc) return alert('Enter description.');
-        if (isNaN(amount) || amount <= 0) return alert('Enter valid amount.');
-        if (!paidBy) return alert('Select who paid.');
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = function(e) {
-            const dataUrl = e.target.result;
-            if (dataUrl.length > 2 * 1024 * 1024) {
-              alert('File too large (max 2MB). Please choose a smaller file.');
+      const waypoints = [];
+      const latlngs = [];
+      appData.itinerary.forEach((item, idx) => {
+        const lat = parseFloat(item.lat);
+        const lng = parseFloat(item.lng);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const pos = [lat, lng];
+        latlngs.push(pos);
+        waypoints.push(L.latLng(lat, lng));
+        const marker = L.marker(pos, { title: item.name })
+          .bindPopup(`<b>${item.name}</b><br>${item.desc || ''}`)
+          .addTo(mapInstance);
+        mapMarkers.push(marker);
+      });
+      if (latlngs.length === 1) {
+        mapInstance.setView(latlngs[0], 12);
+        document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add more places to plan a route.</span>';
+      } else if (latlngs.length > 1) {
+        try {
+          routingControl = L.Routing.control({
+            waypoints: waypoints,
+            routeWhileDragging: false,
+            showAlternatives: false,
+            fitSelectedRoutes: true,
+            addWaypoints: false,
+            draggableWaypoints: false,
+            show: false,
+            createMarker: function() { return null; },
+            lineOptions: { styles: [{ color: '#3b82f6', weight: 4, opacity: 0.8 }] },
+            router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' })
+          }).addTo(mapInstance);
+          routingControl.on('routesfound', function(e) {
+            const routes = e.routes;
+            if (!routes || routes.length === 0) {
+              document.getElementById('navInstructions').innerHTML = '<span class="placeholder">No route found.</span>';
               return;
             }
-            appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: dataUrl });
-            fileInput.value = '';
-            document.getElementById('removeReceiptBtn').style.display = 'none';
-            renderExpenses();
-            saveData();
-          };
-          reader.readAsDataURL(file);
-        } else {
-          appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
-          renderExpenses();
-          saveData();
-        }
-        document.getElementById('expDesc').value = '';
-        document.getElementById('expAmount').value = '';
-      }
-
-      function removeExpense(idx) {
-        if (!confirm('Remove this expense?')) return;
-        appData.expenses.splice(idx, 1);
-        renderExpenses();
-        saveData();
-      }
-
-      function handleReceiptChange() {
-        const fileInput = document.getElementById('expReceipt');
-        const removeBtn = document.getElementById('removeReceiptBtn');
-        if (fileInput.files.length > 0) {
-          removeBtn.style.display = 'inline-block';
-        } else {
-          removeBtn.style.display = 'none';
-        }
-      }
-
-      function removeReceipt() {
-        document.getElementById('expReceipt').value = '';
-        document.getElementById('removeReceiptBtn').style.display = 'none';
-      }
-
-      function updateTrip() {
-        const name = document.getElementById('tripName').value.trim();
-        const date = document.getElementById('tripDate').value;
-        if (name) appData.tripName = name;
-        appData.tripDate = date;
-        document.getElementById('tripStatus').innerHTML = `📅 ${date} | ${appData.tripName}`;
-        saveData();
-      }
-
-      // ========== NAVIGATION ==========
-      function switchPage(pageId) {
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.getElementById(`page-${pageId}`).classList.add('active');
-        document.querySelectorAll('.nav-tabs button').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.nav-tabs button').forEach(b => { if (b.dataset.page === pageId) b.classList.add('active'); });
-        if (pageId === 'itinerary' && mapInstance) {
-          setTimeout(() => mapInstance.invalidateSize(), 100);
-        }
-        if (pageId === 'settlements') calculateSettlements();
-      }
-
-      // ========== BUILD UI ==========
-      function buildUI() {
-        const app = document.getElementById('trip-app');
-        app.innerHTML = `
-          <div class="app-header">
-            <h1><i class="fas fa-plane-departure"></i> Trip Planner</h1>
-            <div class="badge" id="tripStatus">📅 ${appData.tripDate} | ${appData.tripName}</div>
-          </div>
-
-          <div class="nav-tabs">
-            <button data-page="dashboard" class="active"><i class="fas fa-home"></i> Dashboard</button>
-            <button data-page="itinerary"><i class="fas fa-map-marked-alt"></i> Itinerary</button>
-            <button data-page="expenses"><i class="fas fa-wallet"></i> Expenses</button>
-            <button data-page="settlements"><i class="fas fa-hand-holding-usd"></i> Settle</button>
-          </div>
-
-          <div id="page-dashboard" class="page active">
-            <div class="card">
-              <h3><i class="fas fa-users"></i> Trip Setup</h3>
-              <div class="input-group">
-                <input type="text" id="tripName" placeholder="Trip Name" value="${appData.tripName}">
-                <input type="date" id="tripDate" value="${appData.tripDate}">
-                <button id="updateTripBtn"><i class="fas fa-save"></i> Update</button>
-                <button id="startNewTripBtn" class="btn-danger"><i class="fas fa-trash-alt"></i> Start New Trip</button>
-                <button id="shareTripBtn" class="btn-success" style="background:#8b5cf6 !important;"><i class="fas fa-share-alt"></i> Share Trip</button>
-              </div>
-              <div class="input-group">
-                <input type="text" id="participantInput" placeholder="Add participant name">
-                <button id="addParticipantBtn"><i class="fas fa-user-plus"></i> Add</button>
-              </div>
-              <div id="participantChips" class="chip-group"></div>
-            </div>
-
-            <div class="grid-2">
-              <div class="card">
-                <h3><i class="fas fa-route"></i> Quick Stats</h3>
-                <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                  <div class="stat-box" style="flex:1;"><div class="label">Total Cost</div><div class="value blue" id="dashTotalCost">₹0</div></div>
-                  <div class="stat-box" style="flex:1;"><div class="label">Members</div><div class="value" id="dashParticipantCount">0</div></div>
-                  <div class="stat-box" style="flex:1;"><div class="label">Places</div><div class="value" id="dashPlaceCount">0</div></div>
-                </div>
-              </div>
-              <div class="card">
-                <h3><i class="fas fa-map"></i> Live Location</h3>
-                <button id="trackLocationBtn" class="btn-success" style="padding:10px 20px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;"><i class="fas fa-location-dot"></i> Track My Location</button>
-                <div id="locationStatus" style="margin-top:10px;color:#94a3b8;font-size:14px;">Click to get your current position.</div>
-              </div>
-            </div>
-          </div>
-
-          <div id="page-itinerary" class="page">
-            <div class="card">
-              <h3><i class="fas fa-plus-circle"></i> Add New Place</h3>
-              <div class="input-group">
-                <input type="text" id="placeName" placeholder="Enter place name (e.g., Munnar)" style="flex:2;">
-                <button id="searchPlaceBtn" style="background:#10b981;"><i class="fas fa-search"></i> Search</button>
-                <span id="searchStatus" style="color:#94a3b8; font-size:13px;"></span>
-              </div>
-              <div style="color:#94a3b8; font-size:13px; margin-bottom:8px;">
-                💡 You can also <strong>click on the map</strong> to set coordinates.
-              </div>
-              <div class="input-group">
-                <input type="datetime-local" id="placeTime">
-                <input type="text" id="placeLat" placeholder="Latitude (e.g., 10.089)">
-                <input type="text" id="placeLng" placeholder="Longitude (e.g., 77.059)">
-              </div>
-              <div class="input-group">
-                <textarea id="placeDesc" placeholder="Description..." rows="2"></textarea>
-                <button id="addPlaceBtn"><i class="fas fa-map-pin"></i> Add to Itinerary</button>
-              </div>
-            </div>
-            <div class="card">
-              <h3><i class="fas fa-list"></i> Your Itinerary <span id="itineraryCount" style="font-weight:400;color:#94a3b8;font-size:14px;"></span></h3>
-              <div id="itineraryList"></div>
-            </div>
-            <div class="card">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="font-size:16px; font-weight:600; color:#cbd5e1; margin:0;"><i class="fas fa-map"></i> Navigation</h3>
-                <button id="navToggleBtn" class="btn-success" style="padding:8px 20px; border:none; border-radius:30px; color:#fff; font-weight:600; cursor:pointer;">
-                  <i class="fas fa-play"></i> Start Navigation
-                </button>
-              </div>
-              <div id="map"></div>
-              <div id="navInstructions">
-                <span class="placeholder">Add places to see route and instructions.</span>
-              </div>
-            </div>
-          </div>
-
-          <div id="page-expenses" class="page">
-            <div class="card">
-              <h3><i class="fas fa-receipt"></i> Add Expense</h3>
-              <div class="input-group">
-                <input type="text" id="expDesc" placeholder="Description (e.g., Lunch)">
-                <input type="number" id="expAmount" placeholder="Amount (₹)">
-                <select id="expPaidBy"><option value="">-- Paid By --</option></select>
-              </div>
-              <div class="input-group">
-                <input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()">
-                <button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button>
-              </div>
-              <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
-              <div style="color:#94a3b8; font-size:13px; margin-top:8px;">💰 Shared equally among all participants. Optional receipt upload (image/PDF).</div>
-            </div>
-            <div class="card">
-              <h3><i class="fas fa-list-ul"></i> All Expenses</h3>
-              <div id="expenseList"></div>
-            </div>
-          </div>
-
-          <div id="page-settlements" class="page">
-            <div class="card">
-              <h3><i class="fas fa-calculator"></i> Settlement Summary</h3>
-              <button id="calculateSettleBtn" class="btn-success" style="padding:10px 24px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;margin-bottom:16px;"><i class="fas fa-sync"></i> Calculate Settlements</button>
-              <div id="settlementSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;"></div>
-              <div id="settlementTransactions"></div>
-              <button id="downloadPdfBtn" class="btn-danger" style="margin-top:20px;padding:12px 28px;border:none;border-radius:30px;color:#fff;font-weight:700;cursor:pointer;"><i class="fas fa-file-pdf"></i> Download PDF Report</button>
-            </div>
-          </div>
-        `;
-
-        // ========== SHARE MODAL (Hidden) ==========
-        const modal = document.createElement('div');
-        modal.id = 'shareModal';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-          <div class="modal-box">
-            <h2><i class="fas fa-share-alt"></i> Share Trip</h2>
-            <div class="share-item">
-              <span class="label">🔗 Share Link</span>
-              <span class="value" id="shareLinkDisplay" style="font-size:14px;">Loading...</span>
-            </div>
-            <div class="share-item">
-              <span class="label">🔑 PIN</span>
-              <span class="value pin" id="sharePinDisplay">----</span>
-            </div>
-            <div class="btn-group">
-              <button class="copy-btn" onclick="copyShareLink()"><i class="fas fa-copy"></i> Copy Link</button>
-              <button class="close-btn" onclick="closeShareModal()"><i class="fas fa-times"></i> Close</button>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(modal);
-
-        // ========== EVENT BINDING ==========
-        document.querySelectorAll('.nav-tabs button').forEach(btn => {
-          btn.addEventListener('click', function() { switchPage(this.dataset.page); });
-        });
-
-        document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
-        document.getElementById('participantInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
-
-        document.getElementById('addPlaceBtn').addEventListener('click', addPlace);
-        document.getElementById('searchPlaceBtn').addEventListener('click', searchPlace);
-        document.getElementById('placeName').addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') searchPlace();
-        });
-
-        document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
-        document.getElementById('updateTripBtn').addEventListener('click', updateTrip);
-        document.getElementById('startNewTripBtn').addEventListener('click', startNewTrip);
-        document.getElementById('calculateSettleBtn').addEventListener('click', calculateSettlements);
-        document.getElementById('downloadPdfBtn').addEventListener('click', exportPDF);
-        document.getElementById('trackLocationBtn').addEventListener('click', function() {
-          startLiveTracking();
-        });
-        document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
-        document.getElementById('shareTripBtn').addEventListener('click', generateShareLink);
-
-        // Delegation
-        document.getElementById('expenseList').addEventListener('click', function(e) {
-          const target = e.target.closest('[data-action="removeExpense"]');
-          if (target) {
-            const idx = parseInt(target.dataset.idx);
-            removeExpense(idx);
+            const { steps, totalDistance, totalTime } = parseInstructions(routes);
+            updateInstructionsDisplay(steps, totalDistance, totalTime);
+          });
+          routingControl.on('routingerror', function(e) {
+            document.getElementById('navInstructions').innerHTML = '<span style="color:#ef4444;">❌ Could not calculate route.</span>';
+          });
+          setTimeout(() => { if (routingControl) routingControl.route(); }, 500);
+        } catch (e) {
+          console.error('Routing error:', e);
+          if (latlngs.length > 0) {
+            mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
+            const bounds = L.latLngBounds(latlngs);
+            mapInstance.fitBounds(bounds, { padding: [30, 30] });
           }
-        });
-
-        document.getElementById('participantChips').addEventListener('click', function(e) {
-          const target = e.target.closest('[data-action="removePart"]');
-          if (target) { removeParticipant(target.dataset.name); }
-        });
-
-        document.getElementById('itineraryList').addEventListener('click', function(e) {
-          const target = e.target.closest('[data-action="removeItin"]');
-          if (target) { removeItinerary(parseInt(target.dataset.idx)); }
-        });
-
-        window.handleReceiptChange = handleReceiptChange;
-        window.removeReceipt = removeReceipt;
-        window.copyShareLink = copyShareLink;
-        window.closeShareModal = closeShareModal;
-
-        renderParticipants();
-        renderItinerary();
-        renderExpenses();
-        updateStats();
-        updateSelects();
-
-        initMap();
-
-        // ========== CHECK FOR SHARED TRIP ON LOAD ==========
-        loadSharedTrip();
+          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Routing unavailable. Showing simple path.</span>';
+        }
       }
+      if (userMarker && !mapInstance.hasLayer(userMarker)) userMarker.addTo(mapInstance);
+    }
 
-      // ========== START ==========
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', buildUI);
+    // ========== LIVE TRACKING ==========
+    function startLiveTracking() {
+      if (!navigator.geolocation) { document.getElementById('locationStatus').innerHTML = '❌ GPS not supported.'; return; }
+      if (watchId) { navigator.geolocation.clearWatch(watchId);
+        watchId = null; }
+      document.getElementById('locationStatus').innerHTML = '📍 GPS Active...';
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const accuracy = pos.coords.accuracy;
+          document.getElementById('locationStatus').innerHTML =
+            `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (accuracy: ${Math.round(accuracy)}m)`;
+          if (mapInstance) {
+            if (userMarker) {
+              userMarker.setLatLng([lat, lng]);
+            } else {
+              const icon = L.divIcon({
+                className: 'fa-solid fa-location-dot',
+                iconSize: [24, 24],
+                html: '<i class="fas fa-location-dot" style="color:#3b82f6;font-size:28px;text-shadow:0 0 10px rgba(59,130,246,0.5);"></i>'
+              });
+              userMarker = L.marker([lat, lng], { icon: icon, title: 'You are here' }).addTo(mapInstance).bindPopup(
+                '📍 You are here!');
+            }
+            if (isNavigating) mapInstance.flyTo([lat, lng], 15, { duration: 1 });
+          }
+        },
+        (err) => { document.getElementById('locationStatus').innerHTML = `❌ GPS Error: ${err.message}`;
+          watchId = null; }, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 5000
+        }
+      );
+    }
+
+    function stopLiveTracking() {
+      if (watchId) { navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        document.getElementById('locationStatus').innerHTML = '⏹️ GPS stopped.'; }
+      if (userMarker && mapInstance) { mapInstance.removeLayer(userMarker);
+        userMarker = null; }
+    }
+
+    function toggleNavigation() {
+      if (isNavigating) {
+        isNavigating = false;
+        stopLiveTracking();
+        document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-play"></i> Start Navigation';
+        document.getElementById('navToggleBtn').className = 'btn-success';
+        document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Navigation stopped.</span>';
+        return;
+      }
+      if (appData.itinerary.length < 2) {
+        alert('Please add at least 2 places to your itinerary for navigation.');
+        return;
+      }
+      isNavigating = true;
+      document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-stop"></i> Stop Navigation';
+      document.getElementById('navToggleBtn').className = 'btn-danger';
+      if (!watchId) startLiveTracking();
+      else if (userMarker) { const latlng = userMarker.getLatLng();
+        mapInstance.flyTo(latlng, 15, { duration: 1 }); }
+      if (routingControl) routingControl.route();
+    }
+
+    // ======================================================
+    // 10. SEARCH, SETTLEMENT, PDF, CRUD
+    // ======================================================
+    function searchPlace() {
+      const query = document.getElementById('placeName').value.trim();
+      if (!query) { alert('Please enter a place name to search.'); return; }
+      const url =
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+      document.getElementById('searchStatus').innerHTML = '🔍 Searching...';
+      fetch(url).then(res => res.json()).then(data => {
+        if (data && data.length > 0) {
+          const result = data[0];
+          const lat = parseFloat(result.lat).toFixed(6);
+          const lng = parseFloat(result.lon).toFixed(6);
+          document.getElementById('placeName').value = result.display_name || query;
+          document.getElementById('placeLat').value = lat;
+          document.getElementById('placeLng').value = lng;
+          document.getElementById('searchStatus').innerHTML = '✅ Found!';
+          if (mapInstance) {
+            if (tempMarker) mapInstance.removeLayer(tempMarker);
+            tempMarker = L.marker([lat, lng], { draggable: true }).addTo(mapInstance).bindPopup(
+              `Lat: ${lat}<br>Lng: ${lng}`).openPopup();
+            mapInstance.setView([lat, lng], 13);
+            tempMarker.on('dragend', function() {
+              const pos = tempMarker.getLatLng();
+              document.getElementById('placeLat').value = pos.lat.toFixed(6);
+              document.getElementById('placeLng').value = pos.lng.toFixed(6);
+            });
+          }
+        } else {
+          document.getElementById('searchStatus').innerHTML = '❌ Not found. Try manual entry.';
+        }
+      }).catch(err => { console.error(err);
+        document.getElementById('searchStatus').innerHTML = '❌ Search failed.'; });
+    }
+
+    function getSettlementData() {
+      const participants = appData.participants;
+      const expenses = appData.expenses;
+      const totalPaid = {};
+      participants.forEach(p => totalPaid[p] = 0);
+      expenses.forEach(exp => {
+        const amt = parseFloat(exp.amount);
+        if (totalPaid[exp.paidBy] !== undefined) totalPaid[exp.paidBy] += amt;
+      });
+      const totalCost = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+      const share = participants.length > 0 ? totalCost / participants.length : 0;
+      const netBalance = {};
+      participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
+      return { participants, totalPaid, totalCost, share, netBalance };
+    }
+
+    function calculateSettlements() {
+      const container = document.getElementById('settlementTransactions');
+      const summary = document.getElementById('settlementSummary');
+      const participants = appData.participants;
+      if (participants.length === 0) { container.innerHTML = '<div style="color:#ef4444;">Add participants first!</div>'; return; }
+      if (appData.expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
+      const { totalPaid, totalCost, share, netBalance } = getSettlementData();
+      summary.innerHTML = `
+        <div class="stat-box"><div class="label">Total Cost</div><div class="value blue">₹${totalCost.toFixed(2)}</div></div>
+        <div class="stat-box"><div class="label">Per Person Share</div><div class="value">₹${share.toFixed(2)}</div></div>
+        ${participants.map(p => `
+          <div class="stat-box">
+            <div class="label">${p} (Paid ₹${totalPaid[p].toFixed(2)})</div>
+            <div class="value ${netBalance[p] >= 0 ? 'green' : 'red'}">${netBalance[p] >= 0 ? '+' : ''}${netBalance[p].toFixed(2)}</div>
+          </div>
+        `).join('')}
+      `;
+      let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
+      let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
+      let transactions = [];
+      let i = 0,
+        j = 0;
+      while (i < payers.length && j < receivers.length) {
+        let payer = payers[i],
+          receiver = receivers[j];
+        let settleAmt = Math.min(payer.amount, receiver.amount);
+        if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
+        payer.amount -= settleAmt;
+        receiver.amount -= settleAmt;
+        if (payer.amount < 0.01) i++;
+        if (receiver.amount < 0.01) j++;
+      }
+      if (transactions.length === 0) {
+        container.innerHTML = '<div style="color:#34d399;font-weight:600;">✅ All settled!</div>';
       } else {
-        buildUI();
+        container.innerHTML = transactions.map(t => `
+          <div class="settlement-item">
+            <div><span class="from">${t.from}</span> <i class="fas fa-arrow-right" style="color:#94a3b8;margin:0 12px;"></i> <span class="to">${t.to}</span></div>
+            <div class="s-amount">₹${t.amount.toFixed(2)}</div>
+          </div>
+        `).join('');
       }
+    }
 
-      // ========== SERVICE WORKER ==========
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-          .then(() => console.log('Service Worker registered.'))
-          .catch(err => console.log('SW registration failed:', err));
+    // ========== PDF Export ==========
+    function exportPDF() {
+      const participants = appData.participants;
+      if (participants.length === 0) { alert('Add participants first!'); return; }
+      if (appData.expenses.length === 0) { alert('No expenses to report.'); return; }
+      if (typeof html2canvas === 'undefined') { alert('html2canvas not loaded.'); return; }
+      if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') { alert('jsPDF not loaded.'); return; }
+      const { totalPaid, totalCost, share, netBalance } = getSettlementData();
+      let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
+      let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
+      let transactions = [];
+      let i = 0,
+        j = 0;
+      while (i < payers.length && j < receivers.length) {
+        let payer = payers[i],
+          receiver = receivers[j];
+        let settleAmt = Math.min(payer.amount, receiver.amount);
+        if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
+        payer.amount -= settleAmt;
+        receiver.amount -= settleAmt;
+        if (payer.amount < 0.01) i++;
+        if (receiver.amount < 0.01) j++;
       }
+      const currency = '₹';
+      const rows = appData.expenses.map((exp, idx) => `
+        <tr><td style="padding:6px 10px; border:1px solid #d1d5db; text-align:center;">${idx+1}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.desc}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${parseFloat(exp.amount).toFixed(2)}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.paidBy}</td></tr>
+      `).join('');
+      const balanceRows = participants.map(p => {
+        const bal = netBalance[p];
+        const color = bal >= 0 ? '#16a34a' : '#dc2626';
+        return `<tr><td style="padding:6px 10px; border:1px solid #d1d5db;">${p}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${totalPaid[p].toFixed(2)}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right; color:${color}; font-weight:600;">${bal >= 0 ? '+' : ''}${currency}${bal.toFixed(2)}</td></tr>`;
+      }).join('');
+      const txnRows = transactions.map(t => `
+        <tr><td style="padding:6px 10px; border:1px solid #d1d5db;">${t.from}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.to}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${t.amount.toFixed(2)}</td></tr>
+      `).join('');
+      const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Settlement Report</title><style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 30px; background: #ffffff; color: #1e293b; }
+        .container { max-width: 700px; margin: 0 auto; }
+        h1 { text-align: center; color: #1e293b; font-size: 22px; }
+        .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px; }
+        .section { margin: 20px 0; }
+        .section-title { font-size: 16px; font-weight: 600; border-bottom: 2px solid #3b82f6; padding-bottom: 4px; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #f1f5f9; padding: 6px 10px; border: 1px solid #d1d5db; text-align: left; font-weight: 600; }
+        td { padding: 6px 10px; border: 1px solid #d1d5db; }
+        .summary-box { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 12px 0; }
+        .summary-item { background: #f8fafc; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; flex: 1; min-width: 100px; }
+        .summary-item .label { font-size: 12px; color: #64748b; }
+        .summary-item .value { font-size: 20px; font-weight: 700; color: #0f172a; }
+        .participant-badge { display: inline-block; background: #e2e8f0; padding: 2px 12px; border-radius: 20px; font-size: 13px; margin: 2px; }
+        .footer { text-align: center; color: #94a3b8; font-size: 11px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+      </style></head><body>
+        <div class="container"><h1>📊 Trip Settlement Report</h1><div class="subtitle">${appData.tripName} — ${appData.tripDate}</div>
+        <div class="section"><div class="section-title">👥 Participants</div><div style="display:flex; flex-wrap:wrap; gap:4px;">${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}</div></div>
+        <div class="section"><div class="section-title">💰 Shared Expenses</div><table><thead><tr><th style="width:40px;text-align:center;">#</th><th>Description</th><th style="text-align:right;">Amount</th><th>Paid By</th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="text-align:center;">No expenses recorded.</td></tr>'}</tbody></table></div>
+        <div class="section"><div class="section-title">📈 Summary</div><div class="summary-box"><div class="summary-item"><div class="label">Total Cost</div><div class="value">${currency}${totalCost.toFixed(2)}</div></div><div class="summary-item"><div class="label">Per Person Share</div><div class="value">${currency}${share.toFixed(2)}</div></div></div>
+        <table><thead><tr><th>Participant</th><th style="text-align:right;">Total Paid</th><th style="text-align:right;">Net Balance</th></tr></thead><tbody>${balanceRows}</tbody></table></div>
+        <div class="section"><div class="section-title">🔄 Settlement Transactions</div>${transactions.length > 0 ? `<table><thead><tr><th>From</th><th>To</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${txnRows}</tbody></table><div style="margin-top:6px; font-size:13px; color:#475569;">Total transactions: ${transactions.length}</div>` : `<p style="color:#16a34a; font-weight:600;">✅ All settled!</p>`}</div>
+        <div class="footer">This settlement was calculated by SplitEasy. All amounts are rounded to 2 decimal places.</div></div>
+      </body></html>`;
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'fixed';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '0';
+      tempDiv.style.width = '750px';
+      tempDiv.style.background = '#ffffff';
+      tempDiv.style.zIndex = '9999';
+      tempDiv.style.padding = '20px';
+      tempDiv.innerHTML = htmlContent;
+      document.body.appendChild(tempDiv);
+      html2canvas(tempDiv, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, width: 750, height: tempDiv
+          .scrollHeight }).then(canvas => {
+        let jsPDFConstructor = null;
+        if (window.jspdf && typeof window.jspdf.jsPDF === 'function') jsPDFConstructor = window.jspdf.jsPDF;
+        else if (window.jsPDF && typeof window.jsPDF === 'function') jsPDFConstructor = window.jsPDF;
+        else if (typeof jsPDF === 'function') jsPDFConstructor = jsPDF;
+        if (!jsPDFConstructor) { document.body.removeChild(tempDiv);
+          alert('jsPDF not found.'); return; }
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const doc = new jsPDFConstructor('p', 'mm', 'a4');
+        const pdfWidth = 210;
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        doc.save(`Settlement_${appData.tripName || 'Trip'}.pdf`);
+        document.body.removeChild(tempDiv);
+      }).catch(err => { console.error(err);
+        document.body.removeChild(tempDiv);
+        alert('PDF generation failed: ' + err.message); });
+    }
 
-      window.calculateSettlements = calculateSettlements;
-    })();
+    // ========== CRUD ==========
+    function addParticipant() {
+      const input = document.getElementById('participantInput');
+      const name = input.value.trim();
+      if (!name) return alert('Enter a name.');
+      if (appData.participants.includes(name)) return alert('Already exists.');
+      appData.participants.push(name);
+      input.value = '';
+      renderParticipants();
+      updateSelects();
+      updateStats();
+      syncToFirebase();
+    }
+
+    function removeParticipant(name) {
+      if (!confirm(`Remove ${name}?`)) return;
+      appData.participants = appData.participants.filter(p => p !== name);
+      renderParticipants();
+      updateSelects();
+      updateStats();
+      syncToFirebase();
+    }
+
+    function addPlace() {
+      const name = document.getElementById('placeName').value.trim();
+      const time = document.getElementById('placeTime').value;
+      const lat = document.getElementById('placeLat').value.trim();
+      const lng = document.getElementById('placeLng').value.trim();
+      const desc = document.getElementById('placeDesc').value.trim();
+      if (!name) return alert('Enter place name.');
+      if (!lat || !lng) return alert('Please enter Latitude and Longitude.');
+      appData.itinerary.push({ id: generateId(), name, time, lat, lng, desc });
+      document.getElementById('placeName').value = '';
+      document.getElementById('placeTime').value = '';
+      document.getElementById('placeLat').value = '';
+      document.getElementById('placeLng').value = '';
+      document.getElementById('placeDesc').value = '';
+      if (tempMarker) { mapInstance.removeLayer(tempMarker);
+        tempMarker = null; }
+      renderItinerary();
+      syncToFirebase();
+    }
+
+    function removeItinerary(idx) {
+      appData.itinerary.splice(idx, 1);
+      renderItinerary();
+      syncToFirebase();
+    }
+
+    function addExpense() {
+      const desc = document.getElementById('expDesc').value.trim();
+      const amount = parseFloat(document.getElementById('expAmount').value);
+      const paidBy = document.getElementById('expPaidBy').value;
+      const fileInput = document.getElementById('expReceipt');
+      const file = fileInput.files[0];
+      if (!desc) return alert('Enter description.');
+      if (isNaN(amount) || amount <= 0) return alert('Enter valid amount.');
+      if (!paidBy) return alert('Select who paid.');
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const dataUrl = e.target.result;
+          if (dataUrl.length > 2 * 1024 * 1024) { alert('File too large (max 2MB).'); return; }
+          appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: dataUrl });
+          fileInput.value = '';
+          document.getElementById('removeReceiptBtn').style.display = 'none';
+          renderExpenses();
+          syncToFirebase();
+        };
+        reader.readAsDataURL(file);
+      } else {
+        appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
+        renderExpenses();
+        syncToFirebase();
+      }
+      document.getElementById('expDesc').value = '';
+      document.getElementById('expAmount').value = '';
+    }
+
+    function removeExpense(idx) {
+      if (!confirm('Remove this expense?')) return;
+      appData.expenses.splice(idx, 1);
+      renderExpenses();
+      syncToFirebase();
+    }
+
+    function handleReceiptChange() {
+      const fileInput = document.getElementById('expReceipt');
+      const removeBtn = document.getElementById('removeReceiptBtn');
+      if (fileInput.files.length > 0) { removeBtn.style.display = 'inline-block'; } else { removeBtn.style.display = 'none'; }
+    }
+
+    function removeReceipt() {
+      document.getElementById('expReceipt').value = '';
+      document.getElementById('removeReceiptBtn').style.display = 'none';
+    }
+
+    function updateTrip() {
+      const name = document.getElementById('tripName').value.trim();
+      const date = document.getElementById('tripDate').value;
+      if (name) appData.tripName = name;
+      appData.tripDate = date;
+      document.getElementById('tripStatus').innerHTML = `📅 ${date} | ${appData.tripName}`;
+      syncToFirebase();
+    }
+
+    function generateId() { return Date.now() + Math.random().toString(36); }
+
+    // ========== NAVIGATION ==========
+    function switchPage(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(`page-${pageId}`).classList.add('active');
+      document.querySelectorAll('.nav-tabs button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.nav-tabs button').forEach(b => { if (b.dataset.page === pageId) b.classList.add('active'); });
+      if (pageId === 'itinerary' && mapInstance) { setTimeout(() => mapInstance.invalidateSize(), 100); }
+      if (pageId === 'settlements') calculateSettlements();
+    }
+
+    function startNewTrip() {
+      if (!confirm('Are you sure you want to clear all data and start a new trip?')) return;
+      cleanupExpiredTrips();
+      if (isSyncing) {
+        database.ref('trips/' + currentTripPin).off();
+        isSyncing = false;
+      }
+      localStorage.removeItem('tripData');
+      localStorage.removeItem('tripPin');
+      currentTripPin = null;
+      appData = { tripName: 'New Trip', tripDate: new Date().toISOString().split('T')[0], participants: [], itinerary: [],
+        expenses: [], createdAt: Date.now() };
+      document.getElementById('trip-app').innerHTML = '';
+      document.getElementById('trip-app').style.display = 'none';
+      document.getElementById('authScreen').style.display = 'flex';
+      document.getElementById('pinInput').value = '';
+    }
+
+    // ======================================================
+    // 11. BUILD UI
+    // ======================================================
+    function buildUI() {
+      const app = document.getElementById('trip-app');
+      app.innerHTML = `
+        <div class="app-header">
+          <h1><i class="fas fa-plane-departure"></i> Trip Planner</h1>
+          <div class="badge" id="tripStatus">📅 ${appData.tripDate} | ${appData.tripName}</div>
+        </div>
+
+        <div class="nav-tabs">
+          <button data-page="dashboard" class="active"><i class="fas fa-home"></i> Dashboard</button>
+          <button data-page="itinerary"><i class="fas fa-map-marked-alt"></i> Itinerary</button>
+          <button data-page="expenses"><i class="fas fa-wallet"></i> Expenses</button>
+          <button data-page="settlements"><i class="fas fa-hand-holding-usd"></i> Settle</button>
+        </div>
+
+        <div id="page-dashboard" class="page active">
+          <div class="card">
+            <h3><i class="fas fa-users"></i> Trip Setup</h3>
+            <div class="input-group">
+              <input type="text" id="tripName" placeholder="Trip Name" value="${appData.tripName}">
+              <input type="date" id="tripDate" value="${appData.tripDate}">
+              <button id="updateTripBtn"><i class="fas fa-save"></i> Update</button>
+              <button id="startNewTripBtn" class="btn-danger"><i class="fas fa-trash-alt"></i> New Trip</button>
+            </div>
+            <div class="input-group">
+              <input type="text" id="participantInput" placeholder="Add participant name">
+              <button id="addParticipantBtn"><i class="fas fa-user-plus"></i> Add</button>
+            </div>
+            <div id="participantChips" class="chip-group"></div>
+            <div style="margin-top:12px; color:#60a5fa; font-size:13px; background:#0b1119; padding:8px 16px; border-radius:10px; border:1px solid #1e293b;">
+              <i class="fas fa-sync"></i> <span id="syncStatus">Real-time sync enabled 🔄</span>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3><i class="fas fa-route"></i> Quick Stats</h3>
+              <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <div class="stat-box" style="flex:1;"><div class="label">Total Cost</div><div class="value blue" id="dashTotalCost">₹0</div></div>
+                <div class="stat-box" style="flex:1;"><div class="label">Members</div><div class="value" id="dashParticipantCount">0</div></div>
+                <div class="stat-box" style="flex:1;"><div class="label">Places</div><div class="value" id="dashPlaceCount">0</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3><i class="fas fa-map"></i> Live Location</h3>
+              <button id="trackLocationBtn" class="btn-success" style="padding:10px 20px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;"><i class="fas fa-location-dot"></i> Track My Location</button>
+              <div id="locationStatus" style="margin-top:10px;color:#94a3b8;font-size:14px;">Click to get your current position.</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="page-itinerary" class="page">
+          <div class="card">
+            <h3><i class="fas fa-plus-circle"></i> Add New Place</h3>
+            <div class="input-group">
+              <input type="text" id="placeName" placeholder="Enter place name" style="flex:2;">
+              <button id="searchPlaceBtn" style="background:#10b981;"><i class="fas fa-search"></i> Search</button>
+              <span id="searchStatus" style="color:#94a3b8; font-size:13px;"></span>
+            </div>
+            <div style="color:#94a3b8; font-size:13px; margin-bottom:8px;">💡 Click on the map to set coordinates.</div>
+            <div class="input-group">
+              <input type="datetime-local" id="placeTime">
+              <input type="text" id="placeLat" placeholder="Latitude">
+              <input type="text" id="placeLng" placeholder="Longitude">
+            </div>
+            <div class="input-group">
+              <textarea id="placeDesc" placeholder="Description..." rows="2"></textarea>
+              <button id="addPlaceBtn"><i class="fas fa-map-pin"></i> Add</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3><i class="fas fa-list"></i> Itinerary <span id="itineraryCount"></span></h3>
+            <div id="itineraryList"></div>
+          </div>
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h3 style="font-size:16px; font-weight:600; color:#cbd5e1; margin:0;"><i class="fas fa-map"></i> Navigation</h3>
+              <button id="navToggleBtn" class="btn-success" style="padding:8px 20px; border:none; border-radius:30px; color:#fff; font-weight:600; cursor:pointer;">
+                <i class="fas fa-play"></i> Start
+              </button>
+            </div>
+            <div id="map"></div>
+            <div id="navInstructions"><span class="placeholder">Add places to see route.</span></div>
+          </div>
+        </div>
+
+        <div id="page-expenses" class="page">
+          <div class="card">
+            <h3><i class="fas fa-receipt"></i> Add Expense</h3>
+            <div class="input-group">
+              <input type="text" id="expDesc" placeholder="Description">
+              <input type="number" id="expAmount" placeholder="Amount (₹)">
+              <select id="expPaidBy"><option value="">-- Paid By --</option></select>
+            </div>
+            <div class="input-group">
+              <input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()">
+              <button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove</button>
+            </div>
+            <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
+          </div>
+          <div class="card">
+            <h3><i class="fas fa-list-ul"></i> All Expenses</h3>
+            <div id="expenseList"></div>
+          </div>
+        </div>
+
+        <div id="page-settlements" class="page">
+          <div class="card">
+            <h3><i class="fas fa-calculator"></i> Settlement</h3>
+            <button id="calculateSettleBtn" class="btn-success" style="padding:10px 24px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;margin-bottom:16px;"><i class="fas fa-sync"></i> Calculate</button>
+            <div id="settlementSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;"></div>
+            <div id="settlementTransactions"></div>
+            <button id="downloadPdfBtn" class="btn-danger" style="margin-top:20px;padding:12px 28px;border:none;border-radius:30px;color:#fff;font-weight:700;cursor:pointer;"><i class="fas fa-file-pdf"></i> Download PDF</button>
+          </div>
+        </div>
+      `;
+
+      // ========== EVENT BINDING ==========
+      document.querySelectorAll('.nav-tabs button').forEach(btn => {
+        btn.addEventListener('click', function() { switchPage(this.dataset.page); });
+      });
+
+      document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
+      document.getElementById('participantInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
+      document.getElementById('addPlaceBtn').addEventListener('click', addPlace);
+      document.getElementById('searchPlaceBtn').addEventListener('click', searchPlace);
+      document.getElementById('placeName').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchPlace(); });
+      document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
+      document.getElementById('updateTripBtn').addEventListener('click', updateTrip);
+      document.getElementById('startNewTripBtn').addEventListener('click', startNewTrip);
+      document.getElementById('calculateSettleBtn').addEventListener('click', calculateSettlements);
+      document.getElementById('downloadPdfBtn').addEventListener('click', exportPDF);
+      document.getElementById('trackLocationBtn').addEventListener('click', function() { startLiveTracking(); });
+      document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
+
+      // Delegation
+      document.getElementById('expenseList').addEventListener('click', function(e) {
+        const target = e.target.closest('[data-action="removeExpense"]');
+        if (target) { removeExpense(parseInt(target.dataset.idx)); }
+      });
+      document.getElementById('participantChips').addEventListener('click', function(e) {
+        const target = e.target.closest('[data-action="removePart"]');
+        if (target) { removeParticipant(target.dataset.name); }
+      });
+      document.getElementById('itineraryList').addEventListener('click', function(e) {
+        const target = e.target.closest('[data-action="removeItin"]');
+        if (target) { removeItinerary(parseInt(target.dataset.idx)); }
+      });
+
+      window.handleReceiptChange = handleReceiptChange;
+      window.removeReceipt = removeReceipt;
+
+      renderParticipants();
+      renderItinerary();
+      renderExpenses();
+      updateStats();
+      updateSelects();
+      initMap();
+
+      if (currentTripPin && !isSyncing) {
+        startRealtimeListener(currentTripPin);
+      }
+    }
+
+    // ======================================================
+    // 12. AUTH EVENT BINDINGS
+    // ======================================================
+    document.getElementById('newTripBtn').addEventListener('click', function() {
+      auth.signInAnonymously().then(() => {
+        createNewTrip();
+      }).catch(err => {
+        document.getElementById('authError').textContent = 'Auth error: ' + err.message;
+      });
+    });
+
+    document.getElementById('joinTripBtn').addEventListener('click', function() {
+      auth.signInAnonymously().then(() => {
+        joinTrip();
+      }).catch(err => {
+        document.getElementById('authError').textContent = 'Auth error: ' + err.message;
+      });
+    });
+
+    document.getElementById('pinInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        document.getElementById('joinTripBtn').click();
+      }
+    });
+
+    // Auto-join if pin stored in localStorage
+    const savedPin = localStorage.getItem('tripPin');
+    if (savedPin) {
+      document.getElementById('pinInput').value = savedPin;
+      setTimeout(() => {
+        document.getElementById('joinTripBtn').click();
+      }, 500);
+    }
+
+    // ======================================================
+    // 13. SERVICE WORKER
+    // ======================================================
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js')
+        .then(() => console.log('SW registered.'))
+        .catch(err => console.log('SW registration failed:', err));
+    }
+
+    // Run cleanup on page load
+    cleanupExpiredTrips();
   </script>
 </body>
 </html>
