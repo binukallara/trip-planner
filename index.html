@@ -1,5 +1,5 @@
 
-<!-- Trip Planner with Easy Lat/Lng Input (Search + Map Click) -->
+<!-- Trip Planner with Live Navigation -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -17,6 +17,14 @@
   <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- ========== ROUTING MACHINE ========== -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+  <!-- Leaflet Geocoder (optional, for better search) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-geocoder@0.2.0/dist/leaflet-geocoder.css" />
+  <script src="https://unpkg.com/leaflet-geocoder@0.2.0/dist/leaflet-geocoder.js"></script>
 
   <!-- PDF Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
@@ -75,7 +83,7 @@
     .chip .remove-chip { cursor: pointer; color: #94a3b8; font-size: 12px; }
     .chip .remove-chip:hover { color: #ef4444; }
 
-    #map { height: 400px; width: 100%; border-radius: 16px; border: 1px solid #273340; margin-top: 10px; background: #0b1119; z-index: 1; }
+    #map { height: 450px; width: 100%; border-radius: 16px; border: 1px solid #273340; margin-top: 10px; background: #0b1119; z-index: 1; }
 
     .list-item { background: #111a24; border-radius: 12px; padding: 14px 18px; border-left: 4px solid #3b82f6; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .list-item .info { display: flex; flex-direction: column; gap: 2px; }
@@ -101,8 +109,15 @@
     .page.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+    /* Leaflet overrides for dark theme */
     .leaflet-control-zoom a { background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important; }
     .leaflet-control-zoom a:hover { background: #2d3a4f !important; }
+    /* Routing machine */
+    .leaflet-routing-container { background: #1a2332 !important; color: #e2e8f0 !important; border-color: #334155 !important; }
+    .leaflet-routing-container a { color: #60a5fa !important; }
+    .leaflet-routing-alt { background: #1a2332 !important; color: #e2e8f0 !important; }
+    .leaflet-routing-alt table td { color: #94a3b8 !important; }
+    .leaflet-routing-alt tr { border-bottom: 1px solid #2d3a4f !important; }
 
     @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } .input-group { flex-direction: column; align-items: stretch; } }
   </style>
@@ -124,7 +139,11 @@
       let mapInstance = null;
       let mapMarkers = [];
       let mapPolyline = null;
-      let tempMarker = null; // for map click
+      let routingControl = null;
+      let userMarker = null;
+      let tempMarker = null;
+      let watchId = null;
+      let isNavigating = false;
 
       // ========== HELPERS ==========
       function generateId() { return Date.now() + Math.random().toString(36); }
@@ -229,7 +248,7 @@
         document.getElementById('tripStatus').innerHTML = appData.participants.length > 0 ? `👥 ${appData.participants.length} members` : '⚡ Add members';
       }
 
-      // ========== LEAFET MAP ==========
+      // ========== MAP ==========
       function initMap() {
         const defaultLoc = [10.089, 77.059];
         if (typeof L === 'undefined') {
@@ -247,21 +266,17 @@
         }).addTo(mapInstance);
         L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
 
-        // --- MAP CLICK TO SET COORDINATES ---
+        // --- Click to set coordinates ---
         mapInstance.on('click', function(e) {
           const lat = e.latlng.lat.toFixed(6);
           const lng = e.latlng.lng.toFixed(6);
           document.getElementById('placeLat').value = lat;
           document.getElementById('placeLng').value = lng;
-
-          // Show temporary marker
           if (tempMarker) mapInstance.removeLayer(tempMarker);
           tempMarker = L.marker(e.latlng, { draggable: true })
             .addTo(mapInstance)
             .bindPopup(`Lat: ${lat}<br>Lng: ${lng}`)
             .openPopup();
-
-          // Update lat/lng if marker is dragged
           tempMarker.on('dragend', function() {
             const pos = tempMarker.getLatLng();
             document.getElementById('placeLat').value = pos.lat.toFixed(6);
@@ -269,41 +284,199 @@
           });
         });
 
+        // Start live tracking if it was active
+        if (watchId) {
+          startLiveTracking();
+        }
+
         updateMapMarkers();
       }
 
       function updateMapMarkers() {
         if (!mapInstance) return;
+
+        // Clear all markers except user marker and routing control
         mapMarkers.forEach(marker => { if (mapInstance.hasLayer(marker)) mapInstance.removeLayer(marker); });
         mapMarkers = [];
-        if (mapPolyline) {
-          if (mapInstance.hasLayer(mapPolyline)) mapInstance.removeLayer(mapPolyline);
-          mapPolyline = null;
+
+        // Remove old routing control
+        if (routingControl) {
+          mapInstance.removeControl(routingControl);
+          routingControl = null;
         }
+
         if (appData.itinerary.length === 0) {
           mapInstance.setView([10.089, 77.059], 10);
           return;
         }
+
         const latlngs = [];
+        const waypoints = [];
+
         appData.itinerary.forEach((item, idx) => {
           const lat = parseFloat(item.lat);
           const lng = parseFloat(item.lng);
           if (isNaN(lat) || isNaN(lng)) return;
           const pos = [lat, lng];
           latlngs.push(pos);
+          waypoints.push(L.latLng(lat, lng));
+
           const marker = L.marker(pos, { title: item.name })
             .bindPopup(`<b>${item.name}</b><br>${item.desc || ''}`)
             .addTo(mapInstance);
           mapMarkers.push(marker);
         });
-        if (latlngs.length > 0) {
-          mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
-          const bounds = L.latLngBounds(latlngs);
-          mapInstance.fitBounds(bounds, { padding: [30, 30] });
+
+        // Draw polyline if only one marker or no routing
+        if (latlngs.length === 1) {
+          mapInstance.setView(latlngs[0], 12);
+        } else if (latlngs.length > 1) {
+          // --- Use Routing Machine for route ---
+          try {
+            routingControl = L.Routing.control({
+              waypoints: waypoints,
+              routeWhileDragging: false,
+              showAlternatives: false,
+              fitSelectedRoutes: true,
+              addWaypoints: false,
+              draggableWaypoints: false,
+              createMarker: function() { return null; }, // Don't add extra markers
+              lineOptions: {
+                styles: [{ color: '#3b82f6', weight: 4, opacity: 0.8 }]
+              },
+              // Use OSRM demo server (free, no API key)
+              router: L.Routing.osrmv1({
+                serviceUrl: 'https://router.project-osrm.org/route/v1'
+              })
+            }).addTo(mapInstance);
+
+            // Update waypoints when itinerary changes
+            routingControl.setWaypoints(waypoints);
+
+          } catch (e) {
+            console.error('Routing error:', e);
+            // Fallback to simple polyline
+            if (latlngs.length > 0) {
+              mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
+              const bounds = L.latLngBounds(latlngs);
+              mapInstance.fitBounds(bounds, { padding: [30, 30] });
+            }
+          }
+        }
+
+        // Keep user marker on top
+        if (userMarker && !mapInstance.hasLayer(userMarker)) {
+          userMarker.addTo(mapInstance);
         }
       }
 
-      // ========== GEOCODING SEARCH ==========
+      // ========== LIVE TRACKING ==========
+      function startLiveTracking() {
+        if (!navigator.geolocation) {
+          document.getElementById('locationStatus').innerHTML = '❌ GPS not supported.';
+          return;
+        }
+
+        if (watchId) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+
+        document.getElementById('locationStatus').innerHTML = '📍 GPS Active...';
+
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const accuracy = pos.coords.accuracy;
+
+            document.getElementById('locationStatus').innerHTML =
+              `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (accuracy: ${Math.round(accuracy)}m)`;
+
+            if (mapInstance) {
+              // Update or create user marker
+              if (userMarker) {
+                userMarker.setLatLng([lat, lng]);
+              } else {
+                const icon = L.divIcon({
+                  className: 'fa-solid fa-location-dot',
+                  iconSize: [24, 24],
+                  html: '<i class="fas fa-location-dot" style="color:#3b82f6;font-size:28px;text-shadow:0 0 10px rgba(59,130,246,0.5);"></i>'
+                });
+                userMarker = L.marker([lat, lng], { icon: icon, title: 'You are here' })
+                  .addTo(mapInstance)
+                  .bindPopup('📍 You are here!');
+              }
+
+              // Center map on user if not navigating or if user wants to follow
+              if (!isNavigating) {
+                mapInstance.setView([lat, lng], 15);
+              }
+
+              // --- Check if we have a route and show progress ---
+              if (routingControl) {
+                try {
+                  // Get route and find nearest point
+                  const route = routingControl.getPlan();
+                  if (route && route.getWaypoints && route.getWaypoints().length > 0) {
+                    // Just keep showing the route
+                  }
+                } catch (e) {}
+              }
+            }
+          },
+          (err) => {
+            document.getElementById('locationStatus').innerHTML = `❌ GPS Error: ${err.message}`;
+            watchId = null;
+          }, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 5000
+          }
+        );
+      }
+
+      function stopLiveTracking() {
+        if (watchId) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+          document.getElementById('locationStatus').innerHTML = '⏹️ GPS stopped.';
+        }
+        // Remove user marker
+        if (userMarker && mapInstance) {
+          mapInstance.removeLayer(userMarker);
+          userMarker = null;
+        }
+      }
+
+      // ========== TOGGLE NAVIGATION ==========
+      function toggleNavigation() {
+        if (isNavigating) {
+          // Stop navigation
+          isNavigating = false;
+          stopLiveTracking();
+          document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-play"></i> Start Navigation';
+          document.getElementById('navToggleBtn').className = 'btn-success';
+          return;
+        }
+
+        // Start navigation
+        if (appData.itinerary.length < 2) {
+          alert('Please add at least 2 places to your itinerary for navigation.');
+          return;
+        }
+
+        isNavigating = true;
+        document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-stop"></i> Stop Navigation';
+        document.getElementById('navToggleBtn').className = 'btn-danger';
+
+        // Start GPS if not already
+        if (!watchId) {
+          startLiveTracking();
+        }
+      }
+
+      // ========== SEARCH ==========
       function searchPlace() {
         const query = document.getElementById('placeName').value.trim();
         if (!query) {
@@ -324,7 +497,6 @@
               document.getElementById('placeLat').value = lat;
               document.getElementById('placeLng').value = lng;
               document.getElementById('searchStatus').innerHTML = '✅ Found!';
-              // Optionally, show a marker on map
               if (mapInstance) {
                 if (tempMarker) mapInstance.removeLayer(tempMarker);
                 tempMarker = L.marker([lat, lng], { draggable: true })
@@ -408,25 +580,6 @@
             </div>
           `).join('');
         }
-      }
-
-      // ========== TRACK LOCATION ==========
-      function trackLocation() {
-        if (!navigator.geolocation) { document.getElementById('locationStatus').innerHTML = '❌ Not supported.'; return; }
-        document.getElementById('locationStatus').innerHTML = '📍 Fetching...';
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const lat = pos.coords.latitude, lng = pos.coords.longitude;
-            document.getElementById('locationStatus').innerHTML = `✅ ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-            if (mapInstance) {
-              mapInstance.flyTo([lat, lng], 15);
-              L.marker([lat, lng], { icon: L.divIcon({ className: 'fa-solid fa-location-dot', iconSize: [20, 20], html: '<i class="fas fa-location-dot" style="color:#3b82f6;font-size:24px;"></i>' }) })
-                .addTo(mapInstance)
-                .bindPopup('You are here!');
-            }
-          },
-          (err) => { document.getElementById('locationStatus').innerHTML = `❌ ${err.message}`; }
-        );
       }
 
       // ========== PDF EXPORT ==========
@@ -657,6 +810,17 @@
 
         localStorage.removeItem('tripData');
 
+        // Stop navigation if active
+        if (isNavigating) {
+          isNavigating = false;
+          stopLiveTracking();
+          const btn = document.getElementById('navToggleBtn');
+          if (btn) {
+            btn.innerHTML = '<i class="fas fa-play"></i> Start Navigation';
+            btn.className = 'btn-success';
+          }
+        }
+
         renderParticipants();
         renderItinerary();
         renderExpenses();
@@ -671,6 +835,10 @@
           mapMarkers = [];
           if (mapPolyline && mapInstance.hasLayer(mapPolyline)) mapInstance.removeLayer(mapPolyline);
           mapPolyline = null;
+          if (routingControl) {
+            mapInstance.removeControl(routingControl);
+            routingControl = null;
+          }
           mapInstance.setView([10.089, 77.059], 10);
         }
 
@@ -712,7 +880,6 @@
         document.getElementById('placeLat').value = '';
         document.getElementById('placeLng').value = '';
         document.getElementById('placeDesc').value = '';
-        // remove temp marker
         if (tempMarker) { mapInstance.removeLayer(tempMarker); tempMarker = null; }
         renderItinerary();
         saveData();
@@ -724,7 +891,7 @@
         saveData();
       }
 
-      // ========== ADD EXPENSE WITH RECEIPT ==========
+      // ========== EXPENSES ==========
       function addExpense() {
         const desc = document.getElementById('expDesc').value.trim();
         const amount = parseFloat(document.getElementById('expAmount').value);
@@ -856,14 +1023,13 @@
           <div id="page-itinerary" class="page">
             <div class="card">
               <h3><i class="fas fa-plus-circle"></i> Add New Place</h3>
-              <!-- Search section -->
               <div class="input-group">
                 <input type="text" id="placeName" placeholder="Enter place name (e.g., Munnar)" style="flex:2;">
                 <button id="searchPlaceBtn" style="background:#10b981;"><i class="fas fa-search"></i> Search</button>
                 <span id="searchStatus" style="color:#94a3b8; font-size:13px;"></span>
               </div>
               <div style="color:#94a3b8; font-size:13px; margin-bottom:8px;">
-                💡 You can also <strong>click on the map</strong> below to set coordinates.
+                💡 You can also <strong>click on the map</strong> to set coordinates.
               </div>
               <div class="input-group">
                 <input type="datetime-local" id="placeTime">
@@ -880,7 +1046,12 @@
               <div id="itineraryList"></div>
             </div>
             <div class="card">
-              <h3><i class="fas fa-map"></i> OpenStreetMap (Click to set Lat/Lng)</h3>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="font-size:16px; font-weight:600; color:#cbd5e1; margin:0;"><i class="fas fa-map"></i> Navigation</h3>
+                <button id="navToggleBtn" class="btn-success" style="padding:8px 20px; border:none; border-radius:30px; color:#fff; font-weight:600; cursor:pointer;">
+                  <i class="fas fa-play"></i> Start Navigation
+                </button>
+              </div>
               <div id="map"></div>
             </div>
           </div>
@@ -926,18 +1097,20 @@
         document.getElementById('participantInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
 
         document.getElementById('addPlaceBtn').addEventListener('click', addPlace);
+        document.getElementById('searchPlaceBtn').addEventListener('click', searchPlace);
+        document.getElementById('placeName').addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') searchPlace();
+        });
+
         document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
         document.getElementById('updateTripBtn').addEventListener('click', updateTrip);
         document.getElementById('startNewTripBtn').addEventListener('click', startNewTrip);
         document.getElementById('calculateSettleBtn').addEventListener('click', calculateSettlements);
         document.getElementById('downloadPdfBtn').addEventListener('click', exportPDF);
-        document.getElementById('trackLocationBtn').addEventListener('click', trackLocation);
-
-        // Search button and Enter key for place name
-        document.getElementById('searchPlaceBtn').addEventListener('click', searchPlace);
-        document.getElementById('placeName').addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') searchPlace();
+        document.getElementById('trackLocationBtn').addEventListener('click', function() {
+          startLiveTracking();
         });
+        document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
 
         // Delegation for removing expenses
         document.getElementById('expenseList').addEventListener('click', function(e) {
@@ -977,7 +1150,7 @@
         buildUI();
       }
 
-      // ========== SERVICE WORKER REGISTRATION ==========
+      // ========== SERVICE WORKER ==========
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
           .then(() => console.log('Service Worker registered.'))
