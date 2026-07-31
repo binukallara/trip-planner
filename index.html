@@ -1,4 +1,4 @@
-<!-- Trip Planner with Fixed Turn-by-Turn Instructions -->
+<!-- Trip Planner with Share Trip (Link + PIN) -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -82,14 +82,10 @@
 
     /* ========== MAP & INSTRUCTIONS ========== */
     #map { height: 400px; width: 100%; border-radius: 16px; border: 1px solid #273340; background: #0b1119; z-index: 1; }
-
-    /* Hide default routing panel */
     .leaflet-routing-container { display: none !important; }
-
     .leaflet-control-zoom a { background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important; }
     .leaflet-control-zoom a:hover { background: #2d3a4f !important; }
 
-    /* Instructions Box */
     #navInstructions {
       background: #1a2332;
       padding: 16px 20px;
@@ -188,11 +184,103 @@
     .page.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+    /* ========== SHARE MODAL ========== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+      animation: fadeIn 0.3s ease;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal-box {
+      background: #171f2a;
+      border: 1px solid #2d3a4f;
+      border-radius: 20px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+      color: #e2e8f0;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    }
+    .modal-box h2 {
+      font-size: 20px;
+      margin-bottom: 16px;
+      color: #fff;
+    }
+    .modal-box h2 i {
+      color: #3b82f6;
+      margin-right: 10px;
+    }
+    .modal-box .share-item {
+      background: #0b1119;
+      padding: 12px 16px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      border: 1px solid #2a364a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .modal-box .share-item .label {
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .modal-box .share-item .value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #f1f5f9;
+      word-break: break-all;
+    }
+    .modal-box .share-item .value.pin {
+      font-size: 28px;
+      letter-spacing: 6px;
+      color: #facc15;
+    }
+    .modal-box .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .modal-box .btn-group button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 30px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      transition: 0.2s;
+      color: #fff;
+    }
+    .modal-box .btn-group .copy-btn {
+      background: #3b82f6;
+    }
+    .modal-box .btn-group .copy-btn:hover {
+      background: #2563eb;
+    }
+    .modal-box .btn-group .close-btn {
+      background: #ef4444;
+    }
+    .modal-box .btn-group .close-btn:hover {
+      background: #dc2626;
+    }
+
     @media (max-width: 700px) { 
       .grid-2 { grid-template-columns: 1fr; } 
       .input-group { flex-direction: column; align-items: stretch; }
       #navInstructions { font-size: 14px; padding: 12px 16px; min-height: 60px; }
       #navInstructions .instruction-step { font-size: 14px; }
+      .modal-box { padding: 20px; }
     }
   </style>
 </head>
@@ -218,6 +306,12 @@
       let tempMarker = null;
       let watchId = null;
       let isNavigating = false;
+
+      // ========== SHARE DATA ==========
+      let shareData = {
+        link: '',
+        pin: ''
+      };
 
       // ========== HELPERS ==========
       function generateId() { return Date.now() + Math.random().toString(36); }
@@ -363,21 +457,16 @@
         updateMapMarkers();
       }
 
-      // ========== FIXED INSTRUCTION PARSER ==========
       function parseInstructions(routes) {
         if (!routes || routes.length === 0) return { steps: [], totalDistance: 0, totalTime: 0 };
-
         const route = routes[0];
         let steps = [];
         let totalDistance = 0;
         let totalTime = 0;
-
         if (route.summary) {
           totalDistance = route.summary.totalDistance || 0;
           totalTime = route.summary.totalTime || 0;
         }
-
-        // Try different possible structures
         if (route.legs && route.legs.length > 0) {
           route.legs.forEach(leg => {
             if (leg.steps) {
@@ -389,27 +478,22 @@
         } else if (route.instructions) {
           steps = route.instructions;
         }
-
         return { steps, totalDistance, totalTime };
       }
 
       function updateInstructionsDisplay(steps, totalDistance, totalTime) {
         const container = document.getElementById('navInstructions');
         if (!container) return;
-
         if (!steps || steps.length === 0) {
           container.innerHTML = '<span class="placeholder">No turn-by-turn instructions available.</span>';
           return;
         }
-
         let html = '';
         steps.forEach((step, idx) => {
           let text = step.instruction || step.text || step.name || '';
           let distance = step.distance || 0;
           let time = step.duration || 0;
-
           text = text.replace(/\s+/g, ' ').trim();
-
           let distStr = '';
           if (distance > 0) {
             if (distance >= 1000) {
@@ -418,7 +502,6 @@
               distStr = Math.round(distance) + ' m';
             }
           }
-
           let timeStr = '';
           if (time > 0) {
             if (time >= 60) {
@@ -430,7 +513,6 @@
               timeStr = Math.round(time) + 's';
             }
           }
-
           html += `
             <div class="instruction-step">
               <span class="step-number">${idx + 1}.</span>
@@ -440,7 +522,6 @@
             </div>
           `;
         });
-
         let summary = '';
         if (totalDistance > 0) {
           const distKm = (totalDistance / 1000).toFixed(1);
@@ -450,7 +531,6 @@
           const mins = Math.floor(totalTime / 60);
           summary += ` ⏱️ <strong>${mins} min</strong>`;
         }
-
         container.innerHTML = `
           <div class="instructions-summary">${summary}</div>
           <div class="instructions-list">${html}</div>
@@ -459,24 +539,19 @@
 
       function updateMapMarkers() {
         if (!mapInstance) return;
-
         mapMarkers.forEach(marker => { if (mapInstance.hasLayer(marker)) mapInstance.removeLayer(marker); });
         mapMarkers = [];
-
         if (routingControl) {
           mapInstance.removeControl(routingControl);
           routingControl = null;
         }
-
         if (appData.itinerary.length === 0) {
           mapInstance.setView([10.089, 77.059], 10);
           document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route and instructions.</span>';
           return;
         }
-
         const waypoints = [];
         const latlngs = [];
-
         appData.itinerary.forEach((item, idx) => {
           const lat = parseFloat(item.lat);
           const lng = parseFloat(item.lng);
@@ -484,13 +559,11 @@
           const pos = [lat, lng];
           latlngs.push(pos);
           waypoints.push(L.latLng(lat, lng));
-
           const marker = L.marker(pos, { title: item.name })
             .bindPopup(`<b>${item.name}</b><br>${item.desc || ''}`)
             .addTo(mapInstance);
           mapMarkers.push(marker);
         });
-
         if (latlngs.length === 1) {
           mapInstance.setView(latlngs[0], 12);
           document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add more places to plan a route.</span>';
@@ -512,8 +585,6 @@
                 serviceUrl: 'https://router.project-osrm.org/route/v1'
               })
             }).addTo(mapInstance);
-
-            // --- FIXED: Routes found handler ---
             routingControl.on('routesfound', function(e) {
               const routes = e.routes;
               if (!routes || routes.length === 0) {
@@ -523,16 +594,12 @@
               const { steps, totalDistance, totalTime } = parseInstructions(routes);
               updateInstructionsDisplay(steps, totalDistance, totalTime);
             });
-
             routingControl.on('routingerror', function(e) {
               document.getElementById('navInstructions').innerHTML = '<span style="color:#ef4444;">❌ Could not calculate route. Try different locations.</span>';
             });
-
-            // If route already exists, trigger it manually
             setTimeout(() => {
               if (routingControl) routingControl.route();
             }, 500);
-
           } catch (e) {
             console.error('Routing error:', e);
             if (latlngs.length > 0) {
@@ -543,7 +610,6 @@
             document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Routing unavailable. Showing simple path.</span>';
           }
         }
-
         if (userMarker && !mapInstance.hasLayer(userMarker)) {
           userMarker.addTo(mapInstance);
         }
@@ -555,23 +621,18 @@
           document.getElementById('locationStatus').innerHTML = '❌ GPS not supported.';
           return;
         }
-
         if (watchId) {
           navigator.geolocation.clearWatch(watchId);
           watchId = null;
         }
-
         document.getElementById('locationStatus').innerHTML = '📍 GPS Active...';
-
         watchId = navigator.geolocation.watchPosition(
           (pos) => {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             const accuracy = pos.coords.accuracy;
-
             document.getElementById('locationStatus').innerHTML =
               `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (accuracy: ${Math.round(accuracy)}m)`;
-
             if (mapInstance) {
               if (userMarker) {
                 userMarker.setLatLng([lat, lng]);
@@ -585,7 +646,6 @@
                   .addTo(mapInstance)
                   .bindPopup('📍 You are here!');
               }
-
               if (isNavigating) {
                 mapInstance.flyTo([lat, lng], 15, { duration: 1 });
               }
@@ -614,7 +674,6 @@
         }
       }
 
-      // ========== TOGGLE NAVIGATION ==========
       function toggleNavigation() {
         if (isNavigating) {
           isNavigating = false;
@@ -624,16 +683,13 @@
           document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Navigation stopped.</span>';
           return;
         }
-
         if (appData.itinerary.length < 2) {
           alert('Please add at least 2 places to your itinerary for navigation.');
           return;
         }
-
         isNavigating = true;
         document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-stop"></i> Stop Navigation';
         document.getElementById('navToggleBtn').className = 'btn-danger';
-
         if (!watchId) {
           startLiveTracking();
         } else {
@@ -642,9 +698,144 @@
             mapInstance.flyTo(latlng, 15, { duration: 1 });
           }
         }
-
         if (routingControl) {
           routingControl.route();
+        }
+      }
+
+      // ========== SHARE TRIP (Link + PIN) ==========
+      function generateShareLink() {
+        // Check if there's data to share
+        const hasData = appData.participants.length > 0 || appData.itinerary.length > 0 || appData.expenses.length > 0;
+        if (!hasData) {
+          alert('Add some data (participants, itinerary, expenses) before sharing.');
+          return;
+        }
+
+        // Generate 4-digit PIN
+        const pin = String(Math.floor(1000 + Math.random() * 9000));
+        shareData.pin = pin;
+
+        // Prepare data to share (exclude receipts - they can be large)
+        const shareableData = {
+          tripName: appData.tripName,
+          tripDate: appData.tripDate,
+          participants: appData.participants,
+          itinerary: appData.itinerary.map(item => ({
+            name: item.name,
+            time: item.time,
+            lat: item.lat,
+            lng: item.lng,
+            desc: item.desc
+          })),
+          expenses: appData.expenses.map(exp => ({
+            desc: exp.desc,
+            amount: exp.amount,
+            paidBy: exp.paidBy
+            // receipt not included to keep URL small
+          }))
+        };
+
+        // Encode to Base64
+        const jsonStr = JSON.stringify(shareableData);
+        const encoded = btoa(unescape(encodeURIComponent(jsonStr)));
+
+        // Build share URL
+        const baseUrl = window.location.origin + window.location.pathname;
+        const shareUrl = baseUrl + '?share=' + encoded + '&pin=' + pin;
+
+        shareData.link = shareUrl;
+
+        // Show modal with link and pin
+        document.getElementById('shareLinkDisplay').textContent = shareUrl;
+        document.getElementById('sharePinDisplay').textContent = pin;
+        document.getElementById('shareModal').classList.add('active');
+      }
+
+      function copyShareLink() {
+        const link = document.getElementById('shareLinkDisplay').textContent;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(link).then(() => {
+            alert('Link copied to clipboard!');
+          }).catch(() => {
+            fallbackCopy(link);
+          });
+        } else {
+          fallbackCopy(link);
+        }
+      }
+
+      function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('Link copied!');
+      }
+
+      function closeShareModal() {
+        document.getElementById('shareModal').classList.remove('active');
+      }
+
+      // ========== LOAD SHARED TRIP FROM URL ==========
+      function loadSharedTrip() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const encodedData = urlParams.get('share');
+        const pinParam = urlParams.get('pin');
+
+        if (encodedData && pinParam) {
+          // Prompt for PIN
+          const userPin = prompt('Enter the PIN to access this trip:');
+          if (userPin === null) {
+            // User cancelled
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+          }
+          if (userPin !== pinParam) {
+            alert('❌ Incorrect PIN. Access denied.');
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+          }
+
+          // PIN correct, load data
+          try {
+            const jsonStr = decodeURIComponent(escape(atob(encodedData)));
+            const data = JSON.parse(jsonStr);
+
+            // Update appData
+            appData.tripName = data.tripName || 'Shared Trip';
+            appData.tripDate = data.tripDate || new Date().toISOString().split('T')[0];
+            appData.participants = data.participants || [];
+            appData.itinerary = data.itinerary || [];
+            appData.expenses = data.expenses || [];
+
+            // Save to localStorage
+            saveData();
+
+            // Re-render UI
+            renderParticipants();
+            renderItinerary();
+            renderExpenses();
+            updateStats();
+            updateSelects();
+
+            // Update header fields
+            document.getElementById('tripName').value = appData.tripName;
+            document.getElementById('tripDate').value = appData.tripDate;
+
+            // Update map
+            updateMapMarkers();
+
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            alert('✅ Trip loaded successfully!');
+          } catch (e) {
+            console.error('Error loading shared trip:', e);
+            alert('❌ Failed to load shared trip. The link may be corrupted.');
+          }
         }
       }
 
@@ -656,7 +847,6 @@
           return;
         }
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-
         document.getElementById('searchStatus').innerHTML = '🔍 Searching...';
         fetch(url)
           .then(res => res.json())
@@ -715,9 +905,7 @@
         const participants = appData.participants;
         if (participants.length === 0) { container.innerHTML = '<div style="color:#ef4444;">Add participants first!</div>'; return; }
         if (appData.expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
-
         const { totalPaid, totalCost, share, netBalance } = getSettlementData();
-
         summary.innerHTML = `
           <div class="stat-box"><div class="label">Total Cost</div><div class="value blue">₹${totalCost.toFixed(2)}</div></div>
           <div class="stat-box"><div class="label">Per Person Share</div><div class="value">₹${share.toFixed(2)}</div></div>
@@ -728,7 +916,6 @@
             </div>
           `).join('')}
         `;
-
         let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
         let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
         let transactions = [];
@@ -741,7 +928,6 @@
           if (payer.amount < 0.01) i++;
           if (receiver.amount < 0.01) j++;
         }
-
         if (transactions.length === 0) {
           container.innerHTML = '<div style="color:#34d399;font-weight:600;">✅ All settled! Everyone paid their exact share.</div>';
         } else {
@@ -759,7 +945,6 @@
         const participants = appData.participants;
         if (participants.length === 0) { alert('Add participants first!'); return; }
         if (appData.expenses.length === 0) { alert('No expenses to report.'); return; }
-
         if (typeof html2canvas === 'undefined') {
           alert('html2canvas library not loaded. Please refresh and try again.');
           return;
@@ -768,9 +953,7 @@
           alert('jsPDF library not loaded. Please refresh and try again.');
           return;
         }
-
         const { totalPaid, totalCost, share, netBalance } = getSettlementData();
-
         let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
         let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
         let transactions = [];
@@ -783,7 +966,6 @@
           if (payer.amount < 0.01) i++;
           if (receiver.amount < 0.01) j++;
         }
-
         const currency = '₹';
         const rows = appData.expenses.map((exp, idx) => `
           <tr>
@@ -793,7 +975,6 @@
             <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.paidBy}</td>
           </tr>
         `).join('');
-
         const balanceRows = participants.map(p => {
           const bal = netBalance[p];
           const color = bal >= 0 ? '#16a34a' : '#dc2626';
@@ -805,7 +986,6 @@
             </tr>
           `;
         }).join('');
-
         const txnRows = transactions.map(t => `
           <tr>
             <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.from}</td>
@@ -813,7 +993,6 @@
             <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${t.amount.toFixed(2)}</td>
           </tr>
         `).join('');
-
         const htmlContent = `
           <!DOCTYPE html>
           <html>
@@ -842,14 +1021,12 @@
             <div class="container">
               <h1>📊 Trip Settlement Report</h1>
               <div class="subtitle">${appData.tripName} — ${appData.tripDate}</div>
-
               <div class="section">
                 <div class="section-title">👥 Participants</div>
                 <div style="display:flex; flex-wrap:wrap; gap:4px;">
                   ${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}
                 </div>
               </div>
-
               <div class="section">
                 <div class="section-title">💰 Shared Expenses</div>
                 <table>
@@ -866,7 +1043,6 @@
                   </tbody>
                 </table>
               </div>
-
               <div class="section">
                 <div class="section-title">📈 Summary</div>
                 <div class="summary-box">
@@ -892,7 +1068,6 @@
                   </tbody>
                 </table>
               </div>
-
               <div class="section">
                 <div class="section-title">🔄 Settlement Transactions</div>
                 ${transactions.length > 0 ? `
@@ -913,7 +1088,6 @@
                   <p style="color:#16a34a; font-weight:600;">✅ All settled! Everyone paid their exact share.</p>
                 `}
               </div>
-
               <div class="footer">
                 This settlement was calculated by SplitEasy. All amounts are rounded to 2 decimal places.
               </div>
@@ -921,7 +1095,6 @@
           </body>
           </html>
         `;
-
         const tempDiv = document.createElement('div');
         tempDiv.style.position = 'fixed';
         tempDiv.style.left = '-9999px';
@@ -932,7 +1105,6 @@
         tempDiv.style.padding = '20px';
         tempDiv.innerHTML = htmlContent;
         document.body.appendChild(tempDiv);
-
         html2canvas(tempDiv, {
           scale: 2,
           backgroundColor: '#ffffff',
@@ -949,13 +1121,11 @@
           } else if (typeof jsPDF === 'function') {
             jsPDFConstructor = jsPDF;
           }
-
           if (!jsPDFConstructor) {
             document.body.removeChild(tempDiv);
             alert('jsPDF library not found.');
             return;
           }
-
           const imgData = canvas.toDataURL('image/jpeg', 0.95);
           const doc = new jsPDFConstructor('p', 'mm', 'a4');
           const pdfWidth = 210;
@@ -973,15 +1143,12 @@
       // ========== START NEW TRIP ==========
       function startNewTrip() {
         if (!confirm('Are you sure you want to clear all data and start a new trip?')) return;
-
         appData.tripName = 'New Trip';
         appData.tripDate = new Date().toISOString().split('T')[0];
         appData.participants = [];
         appData.itinerary = [];
         appData.expenses = [];
-
         localStorage.removeItem('tripData');
-
         if (isNavigating) {
           isNavigating = false;
           stopLiveTracking();
@@ -991,16 +1158,13 @@
             btn.className = 'btn-success';
           }
         }
-
         renderParticipants();
         renderItinerary();
         renderExpenses();
         updateStats();
         updateSelects();
-
         document.getElementById('tripName').value = appData.tripName;
         document.getElementById('tripDate').value = appData.tripDate;
-
         if (mapInstance) {
           mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
           mapMarkers = [];
@@ -1012,11 +1176,9 @@
           }
           mapInstance.setView([10.089, 77.059], 10);
         }
-
         document.getElementById('settlementSummary').innerHTML = '';
         document.getElementById('settlementTransactions').innerHTML = '';
         document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route and instructions.</span>';
-
         switchPage('dashboard');
         saveData();
       }
@@ -1070,11 +1232,9 @@
         const paidBy = document.getElementById('expPaidBy').value;
         const fileInput = document.getElementById('expReceipt');
         const file = fileInput.files[0];
-
         if (!desc) return alert('Enter description.');
         if (isNaN(amount) || amount <= 0) return alert('Enter valid amount.');
         if (!paidBy) return alert('Select who paid.');
-
         if (file) {
           const reader = new FileReader();
           reader.onload = function(e) {
@@ -1095,7 +1255,6 @@
           renderExpenses();
           saveData();
         }
-
         document.getElementById('expDesc').value = '';
         document.getElementById('expAmount').value = '';
       }
@@ -1167,6 +1326,7 @@
                 <input type="date" id="tripDate" value="${appData.tripDate}">
                 <button id="updateTripBtn"><i class="fas fa-save"></i> Update</button>
                 <button id="startNewTripBtn" class="btn-danger"><i class="fas fa-trash-alt"></i> Start New Trip</button>
+                <button id="shareTripBtn" class="btn-success" style="background:#8b5cf6 !important;"><i class="fas fa-share-alt"></i> Share Trip</button>
               </div>
               <div class="input-group">
                 <input type="text" id="participantInput" placeholder="Add participant name">
@@ -1263,6 +1423,29 @@
           </div>
         `;
 
+        // ========== SHARE MODAL (Hidden) ==========
+        const modal = document.createElement('div');
+        modal.id = 'shareModal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+          <div class="modal-box">
+            <h2><i class="fas fa-share-alt"></i> Share Trip</h2>
+            <div class="share-item">
+              <span class="label">🔗 Share Link</span>
+              <span class="value" id="shareLinkDisplay" style="font-size:14px;">Loading...</span>
+            </div>
+            <div class="share-item">
+              <span class="label">🔑 PIN</span>
+              <span class="value pin" id="sharePinDisplay">----</span>
+            </div>
+            <div class="btn-group">
+              <button class="copy-btn" onclick="copyShareLink()"><i class="fas fa-copy"></i> Copy Link</button>
+              <button class="close-btn" onclick="closeShareModal()"><i class="fas fa-times"></i> Close</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+
         // ========== EVENT BINDING ==========
         document.querySelectorAll('.nav-tabs button').forEach(btn => {
           btn.addEventListener('click', function() { switchPage(this.dataset.page); });
@@ -1286,6 +1469,7 @@
           startLiveTracking();
         });
         document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
+        document.getElementById('shareTripBtn').addEventListener('click', generateShareLink);
 
         // Delegation
         document.getElementById('expenseList').addEventListener('click', function(e) {
@@ -1308,6 +1492,8 @@
 
         window.handleReceiptChange = handleReceiptChange;
         window.removeReceipt = removeReceipt;
+        window.copyShareLink = copyShareLink;
+        window.closeShareModal = closeShareModal;
 
         renderParticipants();
         renderItinerary();
@@ -1316,6 +1502,9 @@
         updateSelects();
 
         initMap();
+
+        // ========== CHECK FOR SHARED TRIP ON LOAD ==========
+        loadSharedTrip();
       }
 
       // ========== START ==========
