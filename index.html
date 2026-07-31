@@ -1,4 +1,4 @@
-<!-- Trip Planner PWA with Leaflet & OpenStreetMap (Free, No API Key) -->
+<!-- Trip Planner PWA with Receipt Upload Feature -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -14,11 +14,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <!-- ============ LEAFET CSS & JS (Free Map) ============ -->
+  <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- ============ PDF LIBRARIES ============ -->
+  <!-- PDF Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js">
@@ -28,6 +28,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <style>
+    /* All existing styles remain unchanged ... */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
 
@@ -81,6 +82,7 @@
     .list-item .info .title { font-weight: 600; color: #f1f5f9; }
     .list-item .info .sub { font-size: 13px; color: #94a3b8; }
     .list-item .amount { font-weight: 700; color: #facc15; }
+    .receipt-thumb { max-width: 60px; max-height: 60px; border-radius: 8px; cursor: pointer; border: 1px solid #334155; }
 
     .settlement-item { background: #1a2332; border-radius: 12px; padding: 16px 20px; border: 1px solid #2d3a4f; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     .settlement-item .from { color: #f87171; font-weight: 700; }
@@ -182,21 +184,40 @@
         saveData();
       }
 
+      // ========== RENDER EXPENSES (with receipt display) ==========
       function renderExpenses() {
         const c = document.getElementById('expenseList');
         if (!c) return;
         if (appData.expenses.length === 0) {
           c.innerHTML = '<div style="color:#64748b;padding:16px;">No expenses recorded.</div>';
         } else {
-          c.innerHTML = appData.expenses.map((exp, idx) => `
-            <div class="list-item" style="border-left-color:#facc15;">
-              <div class="info">
-                <div class="title">${exp.desc}</div>
-                <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
+          c.innerHTML = appData.expenses.map((exp, idx) => {
+            let receiptHtml = '';
+            if (exp.receipt) {
+              const isImage = exp.receipt.startsWith('data:image');
+              const isPdf = exp.receipt.startsWith('data:application/pdf');
+              if (isImage) {
+                receiptHtml = `<img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" onclick="window.open('${exp.receipt}','_blank')" />`;
+              } else if (isPdf) {
+                receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file-pdf"></i> Receipt</a>`;
+              } else {
+                receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file"></i> Receipt</a>`;
+              }
+            }
+            return `
+              <div class="list-item" style="border-left-color:#facc15;">
+                <div class="info">
+                  <div class="title">${exp.desc}</div>
+                  <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
+                  ${receiptHtml ? `<div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>` : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
+                  <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
+                </div>
               </div>
-              <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
-            </div>
-          `).join('');
+            `;
+          }).join('');
         }
         updateStats();
         saveData();
@@ -211,12 +232,11 @@
 
       // ========== LEAFET MAP ==========
       function initMap() {
-        const defaultLoc = [10.089, 77.059]; // Munnar, Kerala
+        const defaultLoc = [10.089, 77.059];
         if (typeof L === 'undefined') {
-          document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;">⚠️ Leaflet library not loaded. Check internet connection.</div>';
+          document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;">⚠️ Leaflet library not loaded.</div>';
           return;
         }
-        // Destroy previous map instance if exists
         if (mapInstance) {
           mapInstance.remove();
           mapInstance = null;
@@ -226,29 +246,22 @@
           maxZoom: 19,
           attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(mapInstance);
-        // Add zoom control to bottom right
         L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
         updateMapMarkers();
       }
 
       function updateMapMarkers() {
         if (!mapInstance) return;
-        // Clear old markers
-        mapMarkers.forEach(marker => {
-          if (mapInstance.hasLayer(marker)) mapInstance.removeLayer(marker);
-        });
+        mapMarkers.forEach(marker => { if (mapInstance.hasLayer(marker)) mapInstance.removeLayer(marker); });
         mapMarkers = [];
         if (mapPolyline) {
           if (mapInstance.hasLayer(mapPolyline)) mapInstance.removeLayer(mapPolyline);
           mapPolyline = null;
         }
-
         if (appData.itinerary.length === 0) {
-          // Reset view if no places
           mapInstance.setView([10.089, 77.059], 10);
           return;
         }
-
         const latlngs = [];
         appData.itinerary.forEach((item, idx) => {
           const lat = parseFloat(item.lat);
@@ -261,11 +274,8 @@
             .addTo(mapInstance);
           mapMarkers.push(marker);
         });
-
         if (latlngs.length > 0) {
-          // Draw polyline
           mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
-          // Fit bounds
           const bounds = L.latLngBounds(latlngs);
           mapInstance.fitBounds(bounds, { padding: [30, 30] });
         }
@@ -589,7 +599,6 @@
         document.getElementById('tripName').value = appData.tripName;
         document.getElementById('tripDate').value = appData.tripDate;
 
-        // Clear map
         if (mapInstance) {
           mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
           mapMarkers = [];
@@ -646,18 +655,68 @@
         saveData();
       }
 
+      // ========== ADD EXPENSE WITH RECEIPT UPLOAD ==========
       function addExpense() {
         const desc = document.getElementById('expDesc').value.trim();
         const amount = parseFloat(document.getElementById('expAmount').value);
         const paidBy = document.getElementById('expPaidBy').value;
+        const fileInput = document.getElementById('expReceipt');
+        const file = fileInput.files[0];
+
         if (!desc) return alert('Enter description.');
         if (isNaN(amount) || amount <= 0) return alert('Enter valid amount.');
         if (!paidBy) return alert('Select who paid.');
-        appData.expenses.push({ id: generateId(), desc, amount, paidBy });
+
+        // If file selected, read as Data URL
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            const dataUrl = e.target.result;
+            // Check file size (max ~2MB to avoid localStorage issues)
+            if (dataUrl.length > 2 * 1024 * 1024) {
+              alert('File too large (max 2MB). Please choose a smaller file.');
+              return;
+            }
+            appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: dataUrl });
+            fileInput.value = ''; // Clear file input
+            document.getElementById('removeReceiptBtn').style.display = 'none';
+            renderExpenses();
+            saveData();
+          };
+          reader.readAsDataURL(file);
+        } else {
+          appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
+          renderExpenses();
+          saveData();
+        }
+
+        // Clear form fields
         document.getElementById('expDesc').value = '';
         document.getElementById('expAmount').value = '';
+      }
+
+      // ========== REMOVE EXPENSE ==========
+      function removeExpense(idx) {
+        if (!confirm('Remove this expense?')) return;
+        appData.expenses.splice(idx, 1);
         renderExpenses();
         saveData();
+      }
+
+      // ========== RECEIPT PREVIEW / REMOVE ==========
+      function handleReceiptChange() {
+        const fileInput = document.getElementById('expReceipt');
+        const removeBtn = document.getElementById('removeReceiptBtn');
+        if (fileInput.files.length > 0) {
+          removeBtn.style.display = 'inline-block';
+        } else {
+          removeBtn.style.display = 'none';
+        }
+      }
+
+      function removeReceipt() {
+        document.getElementById('expReceipt').value = '';
+        document.getElementById('removeReceiptBtn').style.display = 'none';
       }
 
       function updateTrip() {
@@ -762,8 +821,12 @@
                 <input type="number" id="expAmount" placeholder="Amount (₹)">
                 <select id="expPaidBy"><option value="">-- Paid By --</option></select>
               </div>
+              <div class="input-group">
+                <input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()">
+                <button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button>
+              </div>
               <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
-              <div style="color:#94a3b8; font-size:13px; margin-top:8px;">💰 This expense will be shared equally among all participants.</div>
+              <div style="color:#94a3b8; font-size:13px; margin-top:8px;">💰 This expense will be shared equally among all participants. Optional receipt upload (image or PDF).</div>
             </div>
             <div class="card">
               <h3><i class="fas fa-list-ul"></i> All Expenses</h3>
@@ -797,6 +860,15 @@
         document.getElementById('downloadPdfBtn').addEventListener('click', exportPDF);
         document.getElementById('trackLocationBtn').addEventListener('click', trackLocation);
 
+        // Delegate for removing expenses
+        document.getElementById('expenseList').addEventListener('click', function(e) {
+          const target = e.target.closest('[data-action="removeExpense"]');
+          if (target) {
+            const idx = parseInt(target.dataset.idx);
+            removeExpense(idx);
+          }
+        });
+
         document.getElementById('participantChips').addEventListener('click', function(e) {
           const target = e.target.closest('[data-action="removePart"]');
           if (target) { removeParticipant(target.dataset.name); }
@@ -807,13 +879,16 @@
           if (target) { removeItinerary(parseInt(target.dataset.idx)); }
         });
 
+        // Expose receipt functions to global scope for inline onclick
+        window.handleReceiptChange = handleReceiptChange;
+        window.removeReceipt = removeReceipt;
+
         renderParticipants();
         renderItinerary();
         renderExpenses();
         updateStats();
         updateSelects();
 
-        // Initialize Leaflet Map
         initMap();
       }
 
@@ -826,8 +901,8 @@
       // ========== SERVICE WORKER REGISTRATION ==========
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
-          .then(() => console.log('Service Worker registered successfully.'))
-          .catch(err => console.log('Service Worker registration failed:', err));
+          .then(() => console.log('Service Worker registered.'))
+          .catch(err => console.log('SW registration failed:', err));
       }
 
       window.calculateSettlements = calculateSettlements;
