@@ -1,5 +1,4 @@
-
-<!-- Trip Planner with Live Navigation -->
+<!-- Trip Planner with Enhanced Navigation UI (Large Instructions + Auto-Zoom) -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -18,13 +17,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- ========== ROUTING MACHINE ========== -->
+  <!-- Routing Machine -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
-
-  <!-- Leaflet Geocoder (optional, for better search) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-geocoder@0.2.0/dist/leaflet-geocoder.css" />
-  <script src="https://unpkg.com/leaflet-geocoder@0.2.0/dist/leaflet-geocoder.js"></script>
 
   <!-- PDF Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
@@ -83,7 +78,43 @@
     .chip .remove-chip { cursor: pointer; color: #94a3b8; font-size: 12px; }
     .chip .remove-chip:hover { color: #ef4444; }
 
-    #map { height: 450px; width: 100%; border-radius: 16px; border: 1px solid #273340; margin-top: 10px; background: #0b1119; z-index: 1; }
+    #map { height: 400px; width: 100%; border-radius: 16px; border: 1px solid #273340; margin-top: 10px; background: #0b1119; z-index: 1; }
+
+    /* --- New Navigation Instructions Box --- */
+    #navInstructions {
+      background: #1a2332;
+      padding: 16px 20px;
+      border-radius: 12px;
+      border: 1px solid #2d3a4f;
+      margin-top: 12px;
+      color: #e2e8f0;
+      font-size: 18px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-weight: 500;
+      line-height: 1.6;
+      min-height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    #navInstructions .placeholder {
+      color: #64748b;
+      font-size: 16px;
+      font-weight: 400;
+    }
+    #navInstructions .instruction-step {
+      padding: 4px 0;
+      border-bottom: 1px solid #2d3a4f;
+    }
+    #navInstructions .instruction-step:last-child {
+      border-bottom: none;
+    }
+    #navInstructions .distance {
+      color: #60a5fa;
+      font-weight: 600;
+    }
 
     .list-item { background: #111a24; border-radius: 12px; padding: 14px 18px; border-left: 4px solid #3b82f6; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .list-item .info { display: flex; flex-direction: column; gap: 2px; }
@@ -109,17 +140,17 @@
     .page.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* Leaflet overrides for dark theme */
+    /* Hide default routing panel */
+    .leaflet-routing-container { display: none !important; }
+
     .leaflet-control-zoom a { background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important; }
     .leaflet-control-zoom a:hover { background: #2d3a4f !important; }
-    /* Routing machine */
-    .leaflet-routing-container { background: #1a2332 !important; color: #e2e8f0 !important; border-color: #334155 !important; }
-    .leaflet-routing-container a { color: #60a5fa !important; }
-    .leaflet-routing-alt { background: #1a2332 !important; color: #e2e8f0 !important; }
-    .leaflet-routing-alt table td { color: #94a3b8 !important; }
-    .leaflet-routing-alt tr { border-bottom: 1px solid #2d3a4f !important; }
 
-    @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } .input-group { flex-direction: column; align-items: stretch; } }
+    @media (max-width: 700px) { 
+      .grid-2 { grid-template-columns: 1fr; } 
+      .input-group { flex-direction: column; align-items: stretch; }
+      #navInstructions { font-size: 16px; padding: 12px 16px; min-height: 60px; }
+    }
   </style>
 </head>
 <body>
@@ -284,8 +315,8 @@
           });
         });
 
-        // Start live tracking if it was active
-        if (watchId) {
+        // If navigation was active, re-start live tracking
+        if (isNavigating) {
           startLiveTracking();
         }
 
@@ -307,11 +338,13 @@
 
         if (appData.itinerary.length === 0) {
           mapInstance.setView([10.089, 77.059], 10);
+          // Clear instructions
+          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route and instructions.</span>';
           return;
         }
 
-        const latlngs = [];
         const waypoints = [];
+        const latlngs = [];
 
         appData.itinerary.forEach((item, idx) => {
           const lat = parseFloat(item.lat);
@@ -327,11 +360,11 @@
           mapMarkers.push(marker);
         });
 
-        // Draw polyline if only one marker or no routing
         if (latlngs.length === 1) {
           mapInstance.setView(latlngs[0], 12);
+          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add more places to plan a route.</span>';
         } else if (latlngs.length > 1) {
-          // --- Use Routing Machine for route ---
+          // --- Use Routing Machine with hidden panel ---
           try {
             routingControl = L.Routing.control({
               waypoints: waypoints,
@@ -340,18 +373,42 @@
               fitSelectedRoutes: true,
               addWaypoints: false,
               draggableWaypoints: false,
-              createMarker: function() { return null; }, // Don't add extra markers
+              show: false, // Hide default instructions panel
+              createMarker: function() { return null; },
               lineOptions: {
                 styles: [{ color: '#3b82f6', weight: 4, opacity: 0.8 }]
               },
-              // Use OSRM demo server (free, no API key)
               router: L.Routing.osrmv1({
                 serviceUrl: 'https://router.project-osrm.org/route/v1'
               })
             }).addTo(mapInstance);
 
-            // Update waypoints when itinerary changes
-            routingControl.setWaypoints(waypoints);
+            // --- Listen for route found to populate custom instructions ---
+            routingControl.on('routesfound', function(e) {
+              const routes = e.routes;
+              if (routes && routes.length > 0) {
+                const instructions = routes[0].instructions;
+                let html = '';
+                if (instructions && instructions.length > 0) {
+                  // Show each instruction with distance
+                  instructions.forEach((inst, idx) => {
+                    const text = inst.text || '';
+                    const dist = inst.distance ? (inst.distance / 1000).toFixed(1) + ' km' : '';
+                    html += `<div class="instruction-step">${idx+1}. ${text} <span class="distance">${dist}</span></div>`;
+                  });
+                  document.getElementById('navInstructions').innerHTML = html;
+                } else {
+                  document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Route found, but no step-by-step instructions available.</span>';
+                }
+              } else {
+                document.getElementById('navInstructions').innerHTML = '<span class="placeholder">No route found.</span>';
+              }
+            });
+
+            // Also handle route error
+            routingControl.on('routingerror', function(e) {
+              document.getElementById('navInstructions').innerHTML = '<span style="color:#ef4444;">❌ Could not calculate route. Try different locations.</span>';
+            });
 
           } catch (e) {
             console.error('Routing error:', e);
@@ -361,6 +418,7 @@
               const bounds = L.latLngBounds(latlngs);
               mapInstance.fitBounds(bounds, { padding: [30, 30] });
             }
+            document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Routing unavailable. Showing simple path.</span>';
           }
         }
 
@@ -408,20 +466,9 @@
                   .bindPopup('📍 You are here!');
               }
 
-              // Center map on user if not navigating or if user wants to follow
-              if (!isNavigating) {
-                mapInstance.setView([lat, lng], 15);
-              }
-
-              // --- Check if we have a route and show progress ---
-              if (routingControl) {
-                try {
-                  // Get route and find nearest point
-                  const route = routingControl.getPlan();
-                  if (route && route.getWaypoints && route.getWaypoints().length > 0) {
-                    // Just keep showing the route
-                  }
-                } catch (e) {}
+              // Auto-zoom and follow if navigating
+              if (isNavigating) {
+                mapInstance.flyTo([lat, lng], 15, { duration: 1 });
               }
             }
           },
@@ -442,7 +489,6 @@
           watchId = null;
           document.getElementById('locationStatus').innerHTML = '⏹️ GPS stopped.';
         }
-        // Remove user marker
         if (userMarker && mapInstance) {
           mapInstance.removeLayer(userMarker);
           userMarker = null;
@@ -457,6 +503,7 @@
           stopLiveTracking();
           document.getElementById('navToggleBtn').innerHTML = '<i class="fas fa-play"></i> Start Navigation';
           document.getElementById('navToggleBtn').className = 'btn-success';
+          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Navigation stopped.</span>';
           return;
         }
 
@@ -473,6 +520,18 @@
         // Start GPS if not already
         if (!watchId) {
           startLiveTracking();
+        } else {
+          // If GPS already running, just ensure following is enabled
+          // and force a zoom to current location if known
+          if (userMarker) {
+            const latlng = userMarker.getLatLng();
+            mapInstance.flyTo(latlng, 15, { duration: 1 });
+          }
+        }
+
+        // Re-request route to ensure instructions are fresh
+        if (routingControl) {
+          routingControl.route();
         }
       }
 
@@ -810,7 +869,6 @@
 
         localStorage.removeItem('tripData');
 
-        // Stop navigation if active
         if (isNavigating) {
           isNavigating = false;
           stopLiveTracking();
@@ -844,6 +902,7 @@
 
         document.getElementById('settlementSummary').innerHTML = '';
         document.getElementById('settlementTransactions').innerHTML = '';
+        document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route and instructions.</span>';
 
         switchPage('dashboard');
         saveData();
@@ -1053,6 +1112,10 @@
                 </button>
               </div>
               <div id="map"></div>
+              <!-- Navigation Instructions Box (below map) -->
+              <div id="navInstructions">
+                <span class="placeholder">Add places to see route and instructions.</span>
+              </div>
             </div>
           </div>
 
@@ -1112,7 +1175,7 @@
         });
         document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
 
-        // Delegation for removing expenses
+        // Delegation
         document.getElementById('expenseList').addEventListener('click', function(e) {
           const target = e.target.closest('[data-action="removeExpense"]');
           if (target) {
@@ -1131,7 +1194,6 @@
           if (target) { removeItinerary(parseInt(target.dataset.idx)); }
         });
 
-        // Expose receipt functions globally
         window.handleReceiptChange = handleReceiptChange;
         window.removeReceipt = removeReceipt;
 
