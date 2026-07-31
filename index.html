@@ -1,20 +1,24 @@
-<!-- Trip Planner PWA -->
+<!-- Trip Planner PWA with Leaflet & OpenStreetMap (Free, No API Key) -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Trip Planner</title>
-  
+
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
-  
+
   <!-- Theme Color for Mobile -->
   <meta name="theme-color" content="#0b0e14">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <!-- Load jsPDF & html2canvas from CDN -->
+  <!-- ============ LEAFET CSS & JS (Free Map) ============ -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- ============ PDF LIBRARIES ============ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js">
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js">
@@ -26,7 +30,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
-    
+
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #1a1f29; }
     ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 8px; }
@@ -70,7 +74,7 @@
     .chip .remove-chip { cursor: pointer; color: #94a3b8; font-size: 12px; }
     .chip .remove-chip:hover { color: #ef4444; }
 
-    #map { height: 400px; width: 100%; border-radius: 16px; border: 1px solid #273340; margin-top: 10px; background: #0b1119; }
+    #map { height: 400px; width: 100%; border-radius: 16px; border: 1px solid #273340; margin-top: 10px; background: #0b1119; z-index: 1; }
 
     .list-item { background: #111a24; border-radius: 12px; padding: 14px 18px; border-left: 4px solid #3b82f6; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .list-item .info { display: flex; flex-direction: column; gap: 2px; }
@@ -95,12 +99,16 @@
     .page.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+    /* Leaflet map dark style tweaks */
+    .leaflet-control-zoom a { background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important; }
+    .leaflet-control-zoom a:hover { background: #2d3a4f !important; }
+
     @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } .input-group { flex-direction: column; align-items: stretch; } }
   </style>
 </head>
 <body>
   <div id="trip-app"></div>
-  
+
   <script>
     (function() {
       // ========== DATA ==========
@@ -136,7 +144,7 @@
       function renderParticipants() {
         const c = document.getElementById('participantChips');
         if (!c) return;
-        c.innerHTML = appData.participants.map(p => 
+        c.innerHTML = appData.participants.map(p =>
           `<div class="chip">${p} <span class="remove-chip" data-action="removePart" data-name="${p}"><i class="fas fa-times"></i></span></div>`
         ).join('');
         updateSelects();
@@ -201,49 +209,66 @@
         document.getElementById('tripStatus').innerHTML = appData.participants.length > 0 ? `👥 ${appData.participants.length} members` : '⚡ Add members';
       }
 
-      // ========== MAPS ==========
+      // ========== LEAFET MAP ==========
       function initMap() {
-        const defaultLoc = { lat: 10.089, lng: 77.059 };
-        if (typeof google === 'undefined' || !google.maps) {
-          document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;">⚠️ Google Maps API not loaded. Check your API key.</div>';
+        const defaultLoc = [10.089, 77.059]; // Munnar, Kerala
+        if (typeof L === 'undefined') {
+          document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;">⚠️ Leaflet library not loaded. Check internet connection.</div>';
           return;
         }
-        mapInstance = new google.maps.Map(document.getElementById('map'), {
-          center: defaultLoc, zoom: 10,
-          styles: [{ featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }],
-          mapTypeControl: false,
-        });
+        // Destroy previous map instance if exists
+        if (mapInstance) {
+          mapInstance.remove();
+          mapInstance = null;
+        }
+        mapInstance = L.map('map', { center: defaultLoc, zoom: 10, zoomControl: true });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(mapInstance);
+        // Add zoom control to bottom right
+        L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
         updateMapMarkers();
       }
 
       function updateMapMarkers() {
         if (!mapInstance) return;
-        mapMarkers.forEach(m => m.setMap(null));
-        mapMarkers = [];
-        if (appData.itinerary.length === 0) return;
-        const bounds = new google.maps.LatLngBounds();
-        appData.itinerary.forEach((item, idx) => {
-          const lat = parseFloat(item.lat), lng = parseFloat(item.lng);
-          if (isNaN(lat) || isNaN(lng)) return;
-          const pos = { lat, lng };
-          const marker = new google.maps.Marker({ position: pos, map: mapInstance, title: item.name, label: `${idx+1}` });
-          mapMarkers.push(marker);
-          bounds.extend(pos);
+        // Clear old markers
+        mapMarkers.forEach(marker => {
+          if (mapInstance.hasLayer(marker)) mapInstance.removeLayer(marker);
         });
-        if (mapMarkers.length > 0) {
-          mapInstance.fitBounds(bounds);
-          if (mapPolyline) mapPolyline.setMap(null);
-          const path = mapMarkers.map(m => m.getPosition());
-          mapPolyline = new google.maps.Polyline({ path, geodesic: true, strokeColor: "#3b82f6", strokeOpacity: 0.8, strokeWeight: 3, map: mapInstance });
+        mapMarkers = [];
+        if (mapPolyline) {
+          if (mapInstance.hasLayer(mapPolyline)) mapInstance.removeLayer(mapPolyline);
+          mapPolyline = null;
         }
-      }
 
-      function loadGoogleMaps() {
-        if (typeof google !== 'undefined' && google.maps) { initMap(); return; }
-        const script = document.createElement('script');
-        script.src = 'https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap';
-        script.async = true; script.defer = true;
-        document.head.appendChild(script);
+        if (appData.itinerary.length === 0) {
+          // Reset view if no places
+          mapInstance.setView([10.089, 77.059], 10);
+          return;
+        }
+
+        const latlngs = [];
+        appData.itinerary.forEach((item, idx) => {
+          const lat = parseFloat(item.lat);
+          const lng = parseFloat(item.lng);
+          if (isNaN(lat) || isNaN(lng)) return;
+          const pos = [lat, lng];
+          latlngs.push(pos);
+          const marker = L.marker(pos, { title: item.name })
+            .bindPopup(`<b>${item.name}</b><br>${item.desc || ''}`)
+            .addTo(mapInstance);
+          mapMarkers.push(marker);
+        });
+
+        if (latlngs.length > 0) {
+          // Draw polyline
+          mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
+          // Fit bounds
+          const bounds = L.latLngBounds(latlngs);
+          mapInstance.fitBounds(bounds, { padding: [30, 30] });
+        }
       }
 
       // ========== SETTLEMENT ==========
@@ -317,9 +342,10 @@
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             document.getElementById('locationStatus').innerHTML = `✅ ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
             if (mapInstance) {
-              mapInstance.setCenter({ lat, lng });
-              mapInstance.setZoom(15);
-              new google.maps.Marker({ position: { lat, lng }, map: mapInstance, title: 'You are here!', icon: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png' });
+              mapInstance.flyTo([lat, lng], 15);
+              L.marker([lat, lng], { icon: L.divIcon({ className: 'fa-solid fa-location-dot', iconSize: [20, 20], html: '<i class="fas fa-location-dot" style="color:#3b82f6;font-size:24px;"></i>' }) })
+                .addTo(mapInstance)
+                .bindPopup('You are here!');
             }
           },
           (err) => { document.getElementById('locationStatus').innerHTML = `❌ ${err.message}`; }
@@ -545,38 +571,37 @@
       // ========== START NEW TRIP ==========
       function startNewTrip() {
         if (!confirm('Are you sure you want to clear all data and start a new trip?')) return;
-        
+
         appData.tripName = 'New Trip';
         appData.tripDate = new Date().toISOString().split('T')[0];
         appData.participants = [];
         appData.itinerary = [];
         appData.expenses = [];
-        
+
         localStorage.removeItem('tripData');
-        
+
         renderParticipants();
         renderItinerary();
         renderExpenses();
         updateStats();
         updateSelects();
-        
+
         document.getElementById('tripName').value = appData.tripName;
         document.getElementById('tripDate').value = appData.tripDate;
-        
+
+        // Clear map
         if (mapInstance) {
-          mapMarkers.forEach(m => m.setMap(null));
+          mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
           mapMarkers = [];
-          if (mapPolyline) mapPolyline.setMap(null);
+          if (mapPolyline && mapInstance.hasLayer(mapPolyline)) mapInstance.removeLayer(mapPolyline);
           mapPolyline = null;
-          mapInstance.setCenter({ lat: 10.089, lng: 77.059 });
-          mapInstance.setZoom(10);
+          mapInstance.setView([10.089, 77.059], 10);
         }
-        
+
         document.getElementById('settlementSummary').innerHTML = '';
         document.getElementById('settlementTransactions').innerHTML = '';
-        
+
         switchPage('dashboard');
-        
         saveData();
       }
 
@@ -604,15 +629,21 @@
         const lng = document.getElementById('placeLng').value.trim();
         const desc = document.getElementById('placeDesc').value.trim();
         if (!name) return alert('Enter place name.');
+        if (!lat || !lng) return alert('Please enter Latitude and Longitude.');
         appData.itinerary.push({ id: generateId(), name, time, lat, lng, desc });
-        document.getElementById('placeName').value = ''; document.getElementById('placeTime').value = '';
-        document.getElementById('placeLat').value = ''; document.getElementById('placeLng').value = ''; document.getElementById('placeDesc').value = '';
-        renderItinerary(); saveData();
+        document.getElementById('placeName').value = '';
+        document.getElementById('placeTime').value = '';
+        document.getElementById('placeLat').value = '';
+        document.getElementById('placeLng').value = '';
+        document.getElementById('placeDesc').value = '';
+        renderItinerary();
+        saveData();
       }
 
       function removeItinerary(idx) {
         appData.itinerary.splice(idx, 1);
-        renderItinerary(); saveData();
+        renderItinerary();
+        saveData();
       }
 
       function addExpense() {
@@ -623,8 +654,10 @@
         if (isNaN(amount) || amount <= 0) return alert('Enter valid amount.');
         if (!paidBy) return alert('Select who paid.');
         appData.expenses.push({ id: generateId(), desc, amount, paidBy });
-        document.getElementById('expDesc').value = ''; document.getElementById('expAmount').value = '';
-        renderExpenses(); saveData();
+        document.getElementById('expDesc').value = '';
+        document.getElementById('expAmount').value = '';
+        renderExpenses();
+        saveData();
       }
 
       function updateTrip() {
@@ -642,7 +675,9 @@
         document.getElementById(`page-${pageId}`).classList.add('active');
         document.querySelectorAll('.nav-tabs button').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.nav-tabs button').forEach(b => { if (b.dataset.page === pageId) b.classList.add('active'); });
-        if (pageId === 'itinerary' && mapInstance) setTimeout(() => google.maps.event.trigger(mapInstance, 'resize'), 100);
+        if (pageId === 'itinerary' && mapInstance) {
+          setTimeout(() => mapInstance.invalidateSize(), 100);
+        }
         if (pageId === 'settlements') calculateSettlements();
       }
 
@@ -714,7 +749,7 @@
               <div id="itineraryList"></div>
             </div>
             <div class="card">
-              <h3><i class="fas fa-map"></i> Google Maps</h3>
+              <h3><i class="fas fa-map"></i> OpenStreetMap</h3>
               <div id="map"></div>
             </div>
           </div>
@@ -753,7 +788,7 @@
         });
 
         document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
-        document.getElementById('participantInput').addEventListener('keypress', (e) => { if(e.key === 'Enter') addParticipant(); });
+        document.getElementById('participantInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
         document.getElementById('addPlaceBtn').addEventListener('click', addPlace);
         document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
         document.getElementById('updateTripBtn').addEventListener('click', updateTrip);
@@ -778,7 +813,8 @@
         updateStats();
         updateSelects();
 
-        loadGoogleMaps();
+        // Initialize Leaflet Map
+        initMap();
       }
 
       if (document.readyState === 'loading') {
