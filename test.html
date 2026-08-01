@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test - Add Participant</title>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js">
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js">
+  </script>
+</head>
+<body>
+  <h1>🧪 Test: Add Participant</h1>
+  <div>
+    <input type="text" id="participantInput" placeholder="Enter name">
+    <button id="addBtn">Add Participant</button>
+  </div>
+  <div id="participantList"></div>
+  <div id="status" style="margin-top:10px;"></div>
+
+  <script>
+    // ======================================================
+    // 1. FIREBASE CONFIG (YOUR CONFIG)
+    // ======================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDHFcRRJo_OzuPla9TTLQKTqP0psyrVU1Y",
+      authDomain: "trip-planner-cacaf.firebaseapp.com",
+      databaseURL: "https://trip-planner-cacaf-default-rtdb.firebaseio.com",
+      projectId: "trip-planner-cacaf",
+      storageBucket: "trip-planner-cacaf.firebasestorage.app",
+      messagingSenderId: "829860320918",
+      appId: "1:829860320918:web:4062460a825314a49414b7",
+      measurementId: "G-0MX66HVEK7"
+    };
+
+    // 2. INIT FIREBASE
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // 3. TEST PIN (നിങ്ങളുടെ ACTIVE PIN ഇവിടെ ചേർക്കുക)
+    const TEST_PIN = "7772"; // നിങ്ങളുടെ PIN ഇവിടെ ചേർക്കുക
+
+    // 4. ADD PARTICIPANT
+    function addParticipant() {
+      const input = document.getElementById('participantInput');
+      const name = input.value.trim();
+      const status = document.getElementById('status');
+
+      if (!name) {
+        status.innerHTML = '⚠️ Please enter a name.';
+        return;
+      }
+
+      status.innerHTML = '⏳ Adding participant...';
+
+      // First, get current trip data
+      database.ref('trips/' + TEST_PIN).once('value')
+        .then(snapshot => {
+          if (!snapshot.exists()) {
+            status.innerHTML = '❌ Trip not found for PIN: ' + TEST_PIN;
+            return;
+          }
+
+          const tripData = snapshot.val();
+          const participants = tripData.participants || [];
+
+          // Add new participant
+          participants.push(name);
+
+          // Update Firebase
+          return database.ref('trips/' + TEST_PIN + '/participants').set(participants);
+        })
+        .then(() => {
+          status.innerHTML = '✅ Participant added successfully!';
+          document.getElementById('participantInput').value = '';
+          loadParticipants(); // Refresh list
+        })
+        .catch(err => {
+          console.error('Error:', err);
+          status.innerHTML = '❌ Error: ' + err.message;
+        });
+    }
+
+    // 5. LOAD PARTICIPANTS
+    function loadParticipants() {
+      const list = document.getElementById('participantList');
+      list.innerHTML = 'Loading...';
+
+      database.ref('trips/' + TEST_PIN + '/participants').once('value')
+        .then(snapshot => {
+          const participants = snapshot.val() || [];
+          if (participants.length === 0) {
+            list.innerHTML = 'No participants yet.';
+          } else {
+            list.innerHTML = participants.map((p, idx) => 
+              `<div style="padding:4px; border-bottom:1px solid #ccc;">${idx+1}. ${p}</div>`
+            ).join('');
+          }
+        })
+        .catch(err => {
+          list.innerHTML = 'Error loading: ' + err.message;
+          console.error(err);
+        });
+    }
+
+    // 6. EVENT BINDING
+    document.getElementById('addBtn').addEventListener('click', addParticipant);
+    document.getElementById('participantInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') addParticipant();
+    });
+
+    // 7. LOAD ON START
+    loadParticipants();
+
+    console.log('🔥 Test app started. PIN:', TEST_PIN);
+  </script>
+</body>
+</html>
