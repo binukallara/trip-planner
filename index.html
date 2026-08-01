@@ -1,4 +1,5 @@
-<!-- Trip Planner with Firebase (No Auth) + Error Handling -->
+
+<!-- Trip Planner with Debug & Error Handling -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -32,7 +33,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <style>
-    /* All styles same as previous - kept minimal for brevity */
+    /* ========== RESET & BASE ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
     ::-webkit-scrollbar { width: 6px; }
@@ -172,6 +173,9 @@
     .auth-box .btn-group .secondary-btn { background: #10b981; }
     .auth-box .btn-group .secondary-btn:hover { background: #059669; }
     .auth-box .error-msg { color: #ef4444; font-size: 14px; margin-top: 12px; min-height: 20px; }
+    .sync-status { color: #94a3b8; font-size: 13px; margin-top: 6px; }
+    .sync-status.success { color: #34d399; }
+    .sync-status.error { color: #ef4444; }
     @media (max-width: 700px) { 
       .grid-2 { grid-template-columns: 1fr; } 
       .input-group { flex-direction: column; align-items: stretch; }
@@ -216,10 +220,11 @@
     };
 
     // ======================================================
-    // 2. INIT FIREBASE (NO AUTH)
+    // 2. INIT FIREBASE
     // ======================================================
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
+    console.log('🔥 Firebase initialized');
 
     let currentTripPin = null;
     let isSyncing = false;
@@ -247,12 +252,22 @@
     let isNavigating = false;
 
     // ======================================================
-    // 4. CLEANUP EXPIRED TRIPS (15 days)
+    // 4. SYNC STATUS HELPER
+    // ======================================================
+    function updateSyncStatus(msg, isError = false) {
+      const statusEl = document.getElementById('syncStatus');
+      if (!statusEl) return;
+      statusEl.textContent = msg;
+      statusEl.className = 'sync-status ' + (isError ? 'error' : 'success');
+      console.log('🔔 Sync Status:', msg);
+    }
+
+    // ======================================================
+    // 5. CLEANUP EXPIRED TRIPS (15 days)
     // ======================================================
     function cleanupExpiredTrips() {
       const now = Date.now();
       const expiryMs = 15 * 24 * 60 * 60 * 1000;
-
       const storedPin = localStorage.getItem('tripPin');
       const storedData = localStorage.getItem('tripData');
       if (storedPin && storedData) {
@@ -285,68 +300,57 @@
     }
 
     // ======================================================
-    // 5. TRIP CREATE / JOIN (NO AUTH)
+    // 6. SYNC TO FIREBASE (with error handling)
     // ======================================================
-    function showAuthScreen() {
-      document.getElementById('authScreen').style.display = 'flex';
-      document.getElementById('trip-app').style.display = 'none';
-    }
-
-    function hideAuthScreen() {
-      document.getElementById('authScreen').style.display = 'none';
-      document.getElementById('trip-app').style.display = 'block';
-    }
-
-    function setError(msg) { document.getElementById('authError').textContent = msg; }
-    function clearError() { document.getElementById('authError').textContent = ''; }
-
-    function generatePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
-
-    function checkTripExists(pin) {
-      return database.ref('trips/' + pin).once('value').then(snapshot => snapshot.exists());
-    }
-
-    // ----- Sync with error handling -----
     function syncToFirebase() {
       if (!currentTripPin) {
-        alert('No active trip. Please create or join a trip first.');
+        console.warn('⚠️ No active trip PIN. Cannot sync.');
+        updateSyncStatus('No active trip', true);
         return;
       }
-      isLocalUpdate = true;
+      if (!appData) {
+        console.warn('⚠️ No appData to sync.');
+        return;
+      }
+
+      // Make sure createdAt is set
       if (!appData.createdAt) {
         appData.createdAt = firebase.database.ServerValue.TIMESTAMP;
       }
+
+      isLocalUpdate = true;
+      console.log('🔄 Syncing data to Firebase for trip:', currentTripPin);
       database.ref('trips/' + currentTripPin).set(appData)
         .then(() => {
           isLocalUpdate = false;
-          // Update sync status
-          const status = document.getElementById('syncStatus');
-          if (status) {
-            status.innerHTML = '✅ Synced';
-            setTimeout(() => {
-              if (status) status.innerHTML = 'Real-time sync enabled 🔄';
-            }, 2000);
-          }
+          console.log('✅ Sync successful');
+          updateSyncStatus('✅ Synced');
+          // Update status after 2 seconds
+          setTimeout(() => {
+            if (document.getElementById('syncStatus')) {
+              document.getElementById('syncStatus').textContent = 'Real-time sync enabled 🔄';
+            }
+          }, 2000);
         })
         .catch(err => {
           isLocalUpdate = false;
-          console.error('Sync error:', err);
-          alert('❌ Failed to save data to Firebase: ' + err.message + '\n\nCheck your Firebase rules. They must allow read/write.');
+          console.error('❌ Sync error:', err);
+          updateSyncStatus('❌ Sync failed: ' + err.message, true);
+          alert('❌ Failed to save data to Firebase: ' + err.message + '\n\nCheck your Firebase rules. They must allow read/write.\n\nPlease set rules to: { "rules": { ".read": true, ".write": true } }');
         });
     }
 
-    // Override all CRUD functions to call syncToFirebase with error handling
-    // We'll replace the existing functions in the main code.
-
     // ======================================================
-    // 6. REAL-TIME LISTENER
+    // 7. REAL-TIME LISTENER
     // ======================================================
     function startRealtimeListener(pin) {
       if (isSyncing) return;
       isSyncing = true;
+      console.log('👂 Starting real-time listener for PIN:', pin);
 
       database.ref('trips/' + pin).on('value', (snapshot) => {
         if (!snapshot.exists()) {
+          console.warn('Trip deleted remotely.');
           localStorage.removeItem('tripPin');
           localStorage.removeItem('tripData');
           alert('This trip has been deleted from the server.');
@@ -354,136 +358,24 @@
           return;
         }
         const remoteData = snapshot.val();
-        if (isLocalUpdate) { isLocalUpdate = false; return; }
+        if (isLocalUpdate) {
+          console.log('↩️ Ignoring local update (remote sync triggered by us)');
+          isLocalUpdate = false;
+          return;
+        }
+        console.log('📥 Remote data updated, applying changes...');
         appData = remoteData;
         localStorage.setItem('tripData', JSON.stringify(appData));
         reRenderAll();
+        updateSyncStatus('✅ Synced');
       }, (error) => {
         console.error('Firebase sync error:', error);
-        alert('Real-time sync error: ' + error.message);
+        updateSyncStatus('⚠️ Listener error', true);
       });
     }
 
     // ======================================================
-    // 7. CREATE / JOIN functions (with error handling)
-    // ======================================================
-    function createNewTrip() {
-      clearError();
-      cleanupExpiredTrips();
-
-      const pin = generatePin();
-      checkTripExists(pin).then(exists => {
-        if (exists) { createNewTrip(); return; }
-        const newTripData = {
-          tripName: 'My Trip',
-          tripDate: new Date().toISOString().split('T')[0],
-          participants: [],
-          itinerary: [],
-          expenses: [],
-          createdAt: firebase.database.ServerValue.TIMESTAMP
-        };
-        return database.ref('trips/' + pin).set(newTripData)
-          .then(() => {
-            currentTripPin = pin;
-            appData = newTripData;
-            localStorage.setItem('tripData', JSON.stringify(appData));
-            localStorage.setItem('tripPin', pin);
-            hideAuthScreen();
-            buildUI();
-            // Start listener
-            startRealtimeListener(pin);
-            setTimeout(() => showShareModal(pin), 500);
-          })
-          .catch(err => {
-            setError('Failed to create trip: ' + err.message);
-            console.error(err);
-          });
-      }).catch(err => { console.error(err);
-        setError('Error: ' + err.message); });
-    }
-
-    function joinTrip() {
-      clearError();
-      const pinInput = document.getElementById('pinInput');
-      const pin = pinInput.value.trim();
-      if (!pin || pin.length !== 4 || isNaN(pin)) {
-        setError('Please enter a valid 4-digit PIN.');
-        return;
-      }
-      cleanupExpiredTrips();
-
-      database.ref('trips/' + pin).once('value').then(snapshot => {
-        if (!snapshot.exists()) {
-          setError('Trip not found with this PIN.');
-          return;
-        }
-        const data = snapshot.val();
-        const now = Date.now();
-        const expiryMs = 15 * 24 * 60 * 60 * 1000;
-        if (data.createdAt && (now - data.createdAt) > expiryMs) {
-          database.ref('trips/' + pin).remove().then(() => {
-            setError('❌ This trip has expired (15 days). Deleted from server.');
-          });
-          return;
-        }
-        currentTripPin = pin;
-        appData = data;
-        localStorage.setItem('tripData', JSON.stringify(appData));
-        localStorage.setItem('tripPin', pin);
-        hideAuthScreen();
-        buildUI();
-        startRealtimeListener(pin);
-      }).catch(err => { console.error(err);
-        setError('Error joining trip: ' + err.message); });
-    }
-
-    // ======================================================
-    // 8. RE-RENDER
-    // ======================================================
-    function reRenderAll() {
-      document.getElementById('tripName').value = appData.tripName || '';
-      document.getElementById('tripDate').value = appData.tripDate || '';
-      renderParticipants();
-      renderItinerary();
-      renderExpenses();
-      updateStats();
-      updateSelects();
-      if (mapInstance) updateMapMarkers();
-      const settlePage = document.getElementById('page-settlements');
-      if (settlePage && settlePage.classList.contains('active')) calculateSettlements();
-    }
-
-    // ======================================================
-    // 9. SHARE MODAL
-    // ======================================================
-    function showShareModal(pin) {
-      const modal = document.createElement('div');
-      modal.id = 'shareModal';
-      modal.style.cssText = `
-        display:flex; position:fixed; top:0; left:0; width:100%; height:100%;
-        background:rgba(0,0,0,0.7); z-index:99999; justify-content:center; align-items:center;
-        animation:fadeIn 0.3s ease;
-      `;
-      modal.innerHTML = `
-        <div class="auth-box" style="max-width:450px; background:#171f2a; border:1px solid #2d3a4f; border-radius:24px; padding:30px; text-align:center; color:#e2e8f0; box-shadow:0 30px 80px rgba(0,0,0,0.9);">
-          <h2 style="font-size:24px; margin-bottom:8px; color:#fff;"><i class="fas fa-share-alt" style="color:#8b5cf6; margin-right:10px;"></i> Share Your Trip</h2>
-          <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Share this PIN with your team to join this trip in real-time.</p>
-          <div style="background:#0b1119; padding:16px; border-radius:16px; border:1px solid #2a364a; margin-bottom:20px;">
-            <div style="color:#94a3b8; font-size:13px; font-weight:500;">🔑 Your Trip PIN</div>
-            <div style="font-size:42px; font-weight:700; color:#facc15; letter-spacing:12px; margin-top:4px;">${pin}</div>
-          </div>
-          <div style="margin-top:12px; color:#64748b; font-size:12px;">Share this PIN via WhatsApp, Email, or any messaging app.</div>
-          <button onclick="this.closest('#shareModal').remove()" style="margin-top:16px; padding:12px 28px; border:none; border-radius:30px; font-weight:600; font-size:15px; cursor:pointer; color:#fff; background:#3b82f6;">Got it</button>
-        </div>
-      `;
-      document.body.appendChild(modal);
-      modal.addEventListener('click', function(e) {
-        if (e.target === modal) modal.remove();
-      });
-    }
-
-    // ======================================================
-    // 10. RENDER FUNCTIONS
+    // 8. RENDER FUNCTIONS
     // ======================================================
     function renderParticipants() {
       const c = document.getElementById('participantChips');
@@ -570,7 +462,146 @@
     }
 
     // ======================================================
-    // 11. MAP & NAVIGATION (unchanged - keep as before)
+    // 9. TRIP CREATE / JOIN
+    // ======================================================
+    function showAuthScreen() {
+      document.getElementById('authScreen').style.display = 'flex';
+      document.getElementById('trip-app').style.display = 'none';
+    }
+
+    function hideAuthScreen() {
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('trip-app').style.display = 'block';
+    }
+
+    function setError(msg) { document.getElementById('authError').textContent = msg; }
+    function clearError() { document.getElementById('authError').textContent = ''; }
+
+    function generatePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
+
+    function checkTripExists(pin) {
+      return database.ref('trips/' + pin).once('value').then(snapshot => snapshot.exists());
+    }
+
+    function createNewTrip() {
+      clearError();
+      cleanupExpiredTrips();
+
+      const pin = generatePin();
+      checkTripExists(pin).then(exists => {
+        if (exists) { createNewTrip(); return; }
+        const newTripData = {
+          tripName: 'My Trip',
+          tripDate: new Date().toISOString().split('T')[0],
+          participants: [],
+          itinerary: [],
+          expenses: [],
+          createdAt: firebase.database.ServerValue.TIMESTAMP
+        };
+        return database.ref('trips/' + pin).set(newTripData)
+          .then(() => {
+            console.log('✅ Trip created with PIN:', pin);
+            currentTripPin = pin;
+            appData = newTripData;
+            localStorage.setItem('tripData', JSON.stringify(appData));
+            localStorage.setItem('tripPin', pin);
+            hideAuthScreen();
+            buildUI();
+            startRealtimeListener(pin);
+            setTimeout(() => showShareModal(pin), 500);
+          })
+          .catch(err => {
+            console.error('❌ Create trip error:', err);
+            setError('Failed to create trip: ' + err.message);
+          });
+      }).catch(err => { console.error(err);
+        setError('Error: ' + err.message); });
+    }
+
+    function joinTrip() {
+      clearError();
+      const pinInput = document.getElementById('pinInput');
+      const pin = pinInput.value.trim();
+      if (!pin || pin.length !== 4 || isNaN(pin)) {
+        setError('Please enter a valid 4-digit PIN.');
+        return;
+      }
+      cleanupExpiredTrips();
+
+      database.ref('trips/' + pin).once('value').then(snapshot => {
+        if (!snapshot.exists()) {
+          setError('Trip not found with this PIN.');
+          return;
+        }
+        const data = snapshot.val();
+        const now = Date.now();
+        const expiryMs = 15 * 24 * 60 * 60 * 1000;
+        if (data.createdAt && (now - data.createdAt) > expiryMs) {
+          database.ref('trips/' + pin).remove().then(() => {
+            setError('❌ This trip has expired (15 days). Deleted from server.');
+          });
+          return;
+        }
+        console.log('✅ Joined trip with PIN:', pin);
+        currentTripPin = pin;
+        appData = data;
+        localStorage.setItem('tripData', JSON.stringify(appData));
+        localStorage.setItem('tripPin', pin);
+        hideAuthScreen();
+        buildUI();
+        startRealtimeListener(pin);
+      }).catch(err => { console.error(err);
+        setError('Error joining trip: ' + err.message); });
+    }
+
+    // ======================================================
+    // 10. SHARE MODAL
+    // ======================================================
+    function showShareModal(pin) {
+      const modal = document.createElement('div');
+      modal.id = 'shareModal';
+      modal.style.cssText = `
+        display:flex; position:fixed; top:0; left:0; width:100%; height:100%;
+        background:rgba(0,0,0,0.7); z-index:99999; justify-content:center; align-items:center;
+        animation:fadeIn 0.3s ease;
+      `;
+      modal.innerHTML = `
+        <div class="auth-box" style="max-width:450px; background:#171f2a; border:1px solid #2d3a4f; border-radius:24px; padding:30px; text-align:center; color:#e2e8f0; box-shadow:0 30px 80px rgba(0,0,0,0.9);">
+          <h2 style="font-size:24px; margin-bottom:8px; color:#fff;"><i class="fas fa-share-alt" style="color:#8b5cf6; margin-right:10px;"></i> Share Your Trip</h2>
+          <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Share this PIN with your team to join this trip in real-time.</p>
+          <div style="background:#0b1119; padding:16px; border-radius:16px; border:1px solid #2a364a; margin-bottom:20px;">
+            <div style="color:#94a3b8; font-size:13px; font-weight:500;">🔑 Your Trip PIN</div>
+            <div style="font-size:42px; font-weight:700; color:#facc15; letter-spacing:12px; margin-top:4px;">${pin}</div>
+          </div>
+          <div style="margin-top:12px; color:#64748b; font-size:12px;">Share this PIN via WhatsApp, Email, or any messaging app.</div>
+          <button onclick="this.closest('#shareModal').remove()" style="margin-top:16px; padding:12px 28px; border:none; border-radius:30px; font-weight:600; font-size:15px; cursor:pointer; color:#fff; background:#3b82f6;">Got it</button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) modal.remove();
+      });
+    }
+
+    // ======================================================
+    // 11. RE-RENDER ALL
+    // ======================================================
+    function reRenderAll() {
+      console.log('🔄 Re-rendering UI from appData');
+      document.getElementById('tripName').value = appData.tripName || '';
+      document.getElementById('tripDate').value = appData.tripDate || '';
+      renderParticipants();
+      renderItinerary();
+      renderExpenses();
+      updateStats();
+      updateSelects();
+      if (mapInstance) updateMapMarkers();
+      const settlePage = document.getElementById('page-settlements');
+      if (settlePage && settlePage.classList.contains('active')) calculateSettlements();
+    }
+
+    // ======================================================
+    // 12. MAP & NAVIGATION (unchanged - keep as before)
     // ======================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
@@ -808,7 +839,7 @@
     }
 
     // ======================================================
-    // 12. SEARCH, SETTLEMENT, PDF, CRUD (with sync)
+    // 13. SEARCH, SETTLEMENT, PDF, CRUD (with sync)
     // ======================================================
     function searchPlace() {
       const query = document.getElementById('placeName').value.trim();
@@ -1000,12 +1031,13 @@
         alert('PDF generation failed: ' + err.message); });
     }
 
-    // ========== CRUD functions (overridden with sync) ==========
+    // ========== CRUD functions (with sync) ==========
     function addParticipant() {
       const input = document.getElementById('participantInput');
       const name = input.value.trim();
       if (!name) return alert('Enter a name.');
       if (appData.participants.includes(name)) return alert('Already exists.');
+      console.log('➕ Adding participant:', name);
       appData.participants.push(name);
       input.value = '';
       renderParticipants();
@@ -1016,6 +1048,7 @@
 
     function removeParticipant(name) {
       if (!confirm(`Remove ${name}?`)) return;
+      console.log('➖ Removing participant:', name);
       appData.participants = appData.participants.filter(p => p !== name);
       renderParticipants();
       updateSelects();
@@ -1031,6 +1064,7 @@
       const desc = document.getElementById('placeDesc').value.trim();
       if (!name) return alert('Enter place name.');
       if (!lat || !lng) return alert('Please enter Latitude and Longitude.');
+      console.log('➕ Adding place:', name, lat, lng);
       appData.itinerary.push({ id: generateId(), name, time, lat, lng, desc });
       document.getElementById('placeName').value = '';
       document.getElementById('placeTime').value = '';
@@ -1044,6 +1078,7 @@
     }
 
     function removeItinerary(idx) {
+      console.log('➖ Removing itinerary item at index:', idx);
       appData.itinerary.splice(idx, 1);
       renderItinerary();
       syncToFirebase();
@@ -1058,6 +1093,7 @@
       if (!desc) return alert('Enter description.');
       if (isNaN(amount) || amount <= 0) return alert('Enter valid amount.');
       if (!paidBy) return alert('Select who paid.');
+      console.log('➕ Adding expense:', desc, amount, paidBy);
       if (file) {
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -1081,6 +1117,7 @@
 
     function removeExpense(idx) {
       if (!confirm('Remove this expense?')) return;
+      console.log('➖ Removing expense at index:', idx);
       appData.expenses.splice(idx, 1);
       renderExpenses();
       syncToFirebase();
@@ -1137,7 +1174,7 @@
     }
 
     // ======================================================
-    // 13. BUILD UI
+    // 14. BUILD UI
     // ======================================================
     function buildUI() {
       const app = document.getElementById('trip-app');
@@ -1171,6 +1208,7 @@
             <div style="margin-top:12px; color:#60a5fa; font-size:13px; background:#0b1119; padding:8px 16px; border-radius:10px; border:1px solid #1e293b;">
               <i class="fas fa-sync"></i> <span id="syncStatus">Real-time sync enabled 🔄</span>
             </div>
+            ${currentTripPin ? `<div style="color:#94a3b8; font-size:12px; margin-top:4px;">🔑 Active PIN: <strong>${currentTripPin}</strong></div>` : ''}
           </div>
 
           <div class="grid-2">
@@ -1304,7 +1342,7 @@
     }
 
     // ======================================================
-    // 14. AUTH EVENT BINDINGS (NO AUTH)
+    // 15. AUTH EVENT BINDINGS (NO AUTH)
     // ======================================================
     document.getElementById('newTripBtn').addEventListener('click', function() {
       createNewTrip();
@@ -1330,7 +1368,7 @@
     }
 
     // ======================================================
-    // 15. SERVICE WORKER
+    // 16. SERVICE WORKER
     // ======================================================
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js')
