@@ -10,13 +10,13 @@
   </script>
 </head>
 <body>
-  <h1>🧪 Test: Add Participant</h1>
+  <h1>🧪 Test: Add Participant (PIN: 1275)</h1>
   <div>
     <input type="text" id="participantInput" placeholder="Enter name">
     <button id="addBtn">Add Participant</button>
   </div>
-  <div id="participantList"></div>
-  <div id="status" style="margin-top:10px;"></div>
+  <div id="participantList" style="margin-top:10px;"></div>
+  <div id="status" style="margin-top:10px; font-weight:bold;"></div>
 
   <script>
     // ======================================================
@@ -37,8 +37,8 @@
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    // 3. TEST PIN (നിങ്ങളുടെ ACTIVE PIN ഇവിടെ ചേർക്കുക)
-    const TEST_PIN = "7772"; // നിങ്ങളുടെ PIN ഇവിടെ ചേർക്കുക
+    // 3. ACTIVE PIN (UPDATED TO 1275)
+    const TEST_PIN = "1275";
 
     // 4. ADD PARTICIPANT
     function addParticipant() {
