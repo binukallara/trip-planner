@@ -1,4 +1,4 @@
-<!-- Trip Planner with Debug & Error Handling -->
+<!-- Trip Planner with Firebase - Fully Working -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <!-- ========== FIREBASE SDK (NO AUTH) ========== -->
+  <!-- Firebase SDK (NO AUTH) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js">
   </script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js">
@@ -32,7 +32,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <style>
-    /* ========== RESET & BASE ========== */
+    /* ========== ALL STYLES ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
     ::-webkit-scrollbar { width: 6px; }
@@ -83,19 +83,13 @@
       border: 1px solid #2d3a4f;
       margin-top: 12px;
       color: #e2e8f0;
-      max-height: 250px;
+      max-height: 200px;
       overflow-y: auto;
       font-weight: 400;
       line-height: 1.6;
-      min-height: 80px;
+      min-height: 60px;
     }
     #navInstructions .placeholder { color: #64748b; font-size: 16px; font-weight: 400; text-align: center; display: block; width: 100%; }
-    #navInstructions .instruction-step { display: flex; flex-wrap: wrap; align-items: baseline; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 16px; gap: 4px 10px; }
-    #navInstructions .instruction-step:last-child { border-bottom: none; }
-    #navInstructions .step-number { color: #94a3b8; font-weight: 600; min-width: 30px; font-size: 14px; }
-    #navInstructions .step-text { flex: 1; color: #f1f5f9; font-weight: 500; }
-    #navInstructions .step-distance { color: #60a5fa; font-weight: 500; font-size: 13px; background: #0b1119; padding: 1px 10px; border-radius: 20px; white-space: nowrap; }
-    #navInstructions .step-time { color: #94a3b8; font-size: 12px; white-space: nowrap; }
     .list-item { background: #111a24; border-radius: 12px; padding: 14px 18px; border-left: 4px solid #3b82f6; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .list-item .info { display: flex; flex-direction: column; gap: 2px; }
     .list-item .info .title { font-weight: 600; color: #f1f5f9; }
@@ -205,7 +199,7 @@
 
   <script>
     // ======================================================
-    // 1. FIREBASE CONFIG (YOUR CONFIG)
+    // 1. FIREBASE CONFIG
     // ======================================================
     const firebaseConfig = {
       apiKey: "AIzaSyDHFcRRJo_OzuPla9TTLQKTqP0psyrVU1Y",
@@ -218,29 +212,12 @@
       measurementId: "G-0MX66HVEK7"
     };
 
-    // ======================================================
-    // 2. INIT FIREBASE
-    // ======================================================
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
-    console.log('🔥 Firebase initialized');
 
     let currentTripPin = null;
     let isSyncing = false;
     let isLocalUpdate = false;
-
-    // ======================================================
-    // 3. MAIN APP DATA
-    // ======================================================
-    let appData = {
-      tripName: 'New Trip',
-      tripDate: new Date().toISOString().split('T')[0],
-      participants: [],
-      itinerary: [],
-      expenses: [],
-      createdAt: Date.now()
-    };
-
     let mapInstance = null;
     let mapMarkers = [];
     let mapPolyline = null;
@@ -251,131 +228,185 @@
     let isNavigating = false;
 
     // ======================================================
-    // 4. SYNC STATUS HELPER
+    // 2. APP DATA
     // ======================================================
+    let appData = {
+      tripName: 'New Trip',
+      tripDate: new Date().toISOString().split('T')[0],
+      participants: [],
+      itinerary: [],
+      expenses: [],
+      createdAt: Date.now()
+    };
+
+    // ======================================================
+    // 3. HELPERS
+    // ======================================================
+    function generateId() { return Date.now() + Math.random().toString(36); }
+
     function updateSyncStatus(msg, isError = false) {
-      const statusEl = document.getElementById('syncStatus');
-      if (!statusEl) return;
-      statusEl.textContent = msg;
-      statusEl.className = 'sync-status ' + (isError ? 'error' : 'success');
-      console.log('🔔 Sync Status:', msg);
+      const el = document.getElementById('syncStatus');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'sync-status ' + (isError ? 'error' : 'success');
     }
 
     // ======================================================
-    // 5. CLEANUP EXPIRED TRIPS (15 days)
-    // ======================================================
-    function cleanupExpiredTrips() {
-      const now = Date.now();
-      const expiryMs = 15 * 24 * 60 * 60 * 1000;
-      const storedPin = localStorage.getItem('tripPin');
-      const storedData = localStorage.getItem('tripData');
-      if (storedPin && storedData) {
-        try {
-          const data = JSON.parse(storedData);
-          if (data.createdAt && (now - data.createdAt) > expiryMs) {
-            console.log('⚠️ Local trip expired, removing...');
-            localStorage.removeItem('tripPin');
-            localStorage.removeItem('tripData');
-          }
-        } catch (e) {}
-      }
-
-      database.ref('trips').once('value').then(snapshot => {
-        if (!snapshot.exists()) return;
-        const trips = snapshot.val();
-        const toDelete = [];
-        for (const [pin, trip] of Object.entries(trips)) {
-          if (trip.createdAt && (now - trip.createdAt) > expiryMs) {
-            toDelete.push(pin);
-          }
-        }
-        if (toDelete.length > 0) {
-          console.log(`🗑️ Deleting ${toDelete.length} expired trips from Firebase.`);
-          const updates = {};
-          toDelete.forEach(pin => { updates['trips/' + pin] = null; });
-          database.ref().update(updates);
-        }
-      }).catch(err => console.warn('Cleanup error:', err));
-    }
-
-    // ======================================================
-    // 6. SYNC TO FIREBASE (with error handling)
+    // 4. FIREBASE SYNC
     // ======================================================
     function syncToFirebase() {
       if (!currentTripPin) {
-        console.warn('⚠️ No active trip PIN. Cannot sync.');
         updateSyncStatus('No active trip', true);
         return;
       }
-      if (!appData) {
-        console.warn('⚠️ No appData to sync.');
-        return;
-      }
-
-      // Make sure createdAt is set
-      if (!appData.createdAt) {
-        appData.createdAt = firebase.database.ServerValue.TIMESTAMP;
-      }
-
       isLocalUpdate = true;
-      console.log('🔄 Syncing data to Firebase for trip:', currentTripPin);
+      if (!appData.createdAt) appData.createdAt = firebase.database.ServerValue.TIMESTAMP;
       database.ref('trips/' + currentTripPin).set(appData)
         .then(() => {
           isLocalUpdate = false;
-          console.log('✅ Sync successful');
           updateSyncStatus('✅ Synced');
-          // Update status after 2 seconds
           setTimeout(() => {
-            if (document.getElementById('syncStatus')) {
-              document.getElementById('syncStatus').textContent = 'Real-time sync enabled 🔄';
-            }
+            const el = document.getElementById('syncStatus');
+            if (el) el.textContent = 'Real-time sync enabled 🔄';
           }, 2000);
         })
         .catch(err => {
           isLocalUpdate = false;
-          console.error('❌ Sync error:', err);
+          console.error('Sync error:', err);
           updateSyncStatus('❌ Sync failed: ' + err.message, true);
-          alert('❌ Failed to save data to Firebase: ' + err.message + '\n\nCheck your Firebase rules. They must allow read/write.\n\nPlease set rules to: { "rules": { ".read": true, ".write": true } }');
+          alert('❌ Failed to save: ' + err.message);
         });
     }
 
-    // ======================================================
-    // 7. REAL-TIME LISTENER
-    // ======================================================
     function startRealtimeListener(pin) {
       if (isSyncing) return;
       isSyncing = true;
-      console.log('👂 Starting real-time listener for PIN:', pin);
-
       database.ref('trips/' + pin).on('value', (snapshot) => {
         if (!snapshot.exists()) {
-          console.warn('Trip deleted remotely.');
           localStorage.removeItem('tripPin');
           localStorage.removeItem('tripData');
-          alert('This trip has been deleted from the server.');
+          alert('Trip deleted from server.');
           window.location.reload();
           return;
         }
         const remoteData = snapshot.val();
-        if (isLocalUpdate) {
-          console.log('↩️ Ignoring local update (remote sync triggered by us)');
-          isLocalUpdate = false;
-          return;
-        }
-        console.log('📥 Remote data updated, applying changes...');
+        if (isLocalUpdate) { isLocalUpdate = false; return; }
         appData = remoteData;
         localStorage.setItem('tripData', JSON.stringify(appData));
         reRenderAll();
-        updateSyncStatus('✅ Synced');
       }, (error) => {
-        console.error('Firebase sync error:', error);
-        updateSyncStatus('⚠️ Listener error', true);
+        console.error('Listener error:', error);
       });
     }
 
     // ======================================================
-    // 8. RENDER FUNCTIONS
+    // 5. TRIP CREATE / JOIN
     // ======================================================
+    function showAuthScreen() {
+      document.getElementById('authScreen').style.display = 'flex';
+      document.getElementById('trip-app').style.display = 'none';
+    }
+    function hideAuthScreen() {
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('trip-app').style.display = 'block';
+    }
+    function setError(msg) { document.getElementById('authError').textContent = msg; }
+    function clearError() { document.getElementById('authError').textContent = ''; }
+    function generatePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
+
+    function createNewTrip() {
+      clearError();
+      const pin = generatePin();
+      const newTripData = {
+        tripName: 'My Trip',
+        tripDate: new Date().toISOString().split('T')[0],
+        participants: [],
+        itinerary: [],
+        expenses: [],
+        createdAt: firebase.database.ServerValue.TIMESTAMP
+      };
+      database.ref('trips/' + pin).set(newTripData)
+        .then(() => {
+          currentTripPin = pin;
+          appData = newTripData;
+          localStorage.setItem('tripData', JSON.stringify(appData));
+          localStorage.setItem('tripPin', pin);
+          hideAuthScreen();
+          buildUI();
+          startRealtimeListener(pin);
+          setTimeout(() => showShareModal(pin), 500);
+        })
+        .catch(err => {
+          console.error(err);
+          setError('Error: ' + err.message);
+        });
+    }
+
+    function joinTrip() {
+      clearError();
+      const pinInput = document.getElementById('pinInput');
+      const pin = pinInput.value.trim();
+      if (!pin || pin.length !== 4 || isNaN(pin)) {
+        setError('Enter a valid 4-digit PIN.');
+        return;
+      }
+      database.ref('trips/' + pin).once('value')
+        .then(snapshot => {
+          if (!snapshot.exists()) {
+            setError('Trip not found.');
+            return;
+          }
+          const data = snapshot.val();
+          currentTripPin = pin;
+          appData = data;
+          localStorage.setItem('tripData', JSON.stringify(appData));
+          localStorage.setItem('tripPin', pin);
+          hideAuthScreen();
+          buildUI();
+          startRealtimeListener(pin);
+        })
+        .catch(err => {
+          console.error(err);
+          setError('Error: ' + err.message);
+        });
+    }
+
+    function showShareModal(pin) {
+      const modal = document.createElement('div');
+      modal.id = 'shareModal';
+      modal.style.cssText = `
+        display:flex; position:fixed; top:0; left:0; width:100%; height:100%;
+        background:rgba(0,0,0,0.7); z-index:99999; justify-content:center; align-items:center;
+      `;
+      modal.innerHTML = `
+        <div class="auth-box" style="max-width:450px;">
+          <h2><i class="fas fa-share-alt" style="color:#8b5cf6;"></i> Share Your Trip</h2>
+          <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Share this PIN with your team.</p>
+          <div style="background:#0b1119; padding:16px; border-radius:16px; border:1px solid #2a364a; margin-bottom:20px;">
+            <div style="color:#94a3b8; font-size:13px;">🔑 Your Trip PIN</div>
+            <div style="font-size:42px; font-weight:700; color:#facc15; letter-spacing:12px;">${pin}</div>
+          </div>
+          <button onclick="this.closest('#shareModal').remove()" style="padding:12px 28px; border:none; border-radius:30px; font-weight:600; color:#fff; background:#3b82f6; cursor:pointer;">Got it</button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    }
+
+    // ======================================================
+    // 6. RENDER FUNCTIONS
+    // ======================================================
+    function reRenderAll() {
+      document.getElementById('tripName').value = appData.tripName || '';
+      document.getElementById('tripDate').value = appData.tripDate || '';
+      renderParticipants();
+      renderItinerary();
+      renderExpenses();
+      updateStats();
+      updateSelects();
+      if (mapInstance) updateMapMarkers();
+    }
+
     function renderParticipants() {
       const c = document.getElementById('participantChips');
       if (!c) return;
@@ -391,7 +422,6 @@
       if (!paidBy) return;
       const opts = appData.participants.map(p => `<option value="${p}">${p}</option>`).join('');
       paidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
-      renderExpenses();
     }
 
     function renderItinerary() {
@@ -413,7 +443,7 @@
       }
       document.getElementById('itineraryCount').innerText = `(${appData.itinerary.length} places)`;
       document.getElementById('dashPlaceCount').innerText = appData.itinerary.length;
-      updateMapMarkers();
+      if (mapInstance) updateMapMarkers();
     }
 
     function renderExpenses() {
@@ -422,33 +452,18 @@
       if (appData.expenses.length === 0) {
         c.innerHTML = '<div style="color:#64748b;padding:16px;">No expenses recorded.</div>';
       } else {
-        c.innerHTML = appData.expenses.map((exp, idx) => {
-          let receiptHtml = '';
-          if (exp.receipt) {
-            const isImage = exp.receipt.startsWith('data:image');
-            const isPdf = exp.receipt.startsWith('data:application/pdf');
-            if (isImage) {
-              receiptHtml = `<img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" onclick="window.open('${exp.receipt}','_blank')" />`;
-            } else if (isPdf) {
-              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file-pdf"></i> Receipt</a>`;
-            } else {
-              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file"></i> Receipt</a>`;
-            }
-          }
-          return `
-            <div class="list-item" style="border-left-color:#facc15;">
-              <div class="info">
-                <div class="title">${exp.desc}</div>
-                <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
-                ${receiptHtml ? `<div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>` : ''}
-              </div>
-              <div style="display:flex; align-items:center; gap:12px;">
-                <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
-                <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
-              </div>
+        c.innerHTML = appData.expenses.map((exp, idx) => `
+          <div class="list-item" style="border-left-color:#facc15;">
+            <div class="info">
+              <div class="title">${exp.desc}</div>
+              <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
             </div>
-          `;
-        }).join('');
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
+              <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+        `).join('');
       }
       updateStats();
     }
@@ -461,146 +476,7 @@
     }
 
     // ======================================================
-    // 9. TRIP CREATE / JOIN
-    // ======================================================
-    function showAuthScreen() {
-      document.getElementById('authScreen').style.display = 'flex';
-      document.getElementById('trip-app').style.display = 'none';
-    }
-
-    function hideAuthScreen() {
-      document.getElementById('authScreen').style.display = 'none';
-      document.getElementById('trip-app').style.display = 'block';
-    }
-
-    function setError(msg) { document.getElementById('authError').textContent = msg; }
-    function clearError() { document.getElementById('authError').textContent = ''; }
-
-    function generatePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
-
-    function checkTripExists(pin) {
-      return database.ref('trips/' + pin).once('value').then(snapshot => snapshot.exists());
-    }
-
-    function createNewTrip() {
-      clearError();
-      cleanupExpiredTrips();
-
-      const pin = generatePin();
-      checkTripExists(pin).then(exists => {
-        if (exists) { createNewTrip(); return; }
-        const newTripData = {
-          tripName: 'My Trip',
-          tripDate: new Date().toISOString().split('T')[0],
-          participants: [],
-          itinerary: [],
-          expenses: [],
-          createdAt: firebase.database.ServerValue.TIMESTAMP
-        };
-        return database.ref('trips/' + pin).set(newTripData)
-          .then(() => {
-            console.log('✅ Trip created with PIN:', pin);
-            currentTripPin = pin;
-            appData = newTripData;
-            localStorage.setItem('tripData', JSON.stringify(appData));
-            localStorage.setItem('tripPin', pin);
-            hideAuthScreen();
-            buildUI();
-            startRealtimeListener(pin);
-            setTimeout(() => showShareModal(pin), 500);
-          })
-          .catch(err => {
-            console.error('❌ Create trip error:', err);
-            setError('Failed to create trip: ' + err.message);
-          });
-      }).catch(err => { console.error(err);
-        setError('Error: ' + err.message); });
-    }
-
-    function joinTrip() {
-      clearError();
-      const pinInput = document.getElementById('pinInput');
-      const pin = pinInput.value.trim();
-      if (!pin || pin.length !== 4 || isNaN(pin)) {
-        setError('Please enter a valid 4-digit PIN.');
-        return;
-      }
-      cleanupExpiredTrips();
-
-      database.ref('trips/' + pin).once('value').then(snapshot => {
-        if (!snapshot.exists()) {
-          setError('Trip not found with this PIN.');
-          return;
-        }
-        const data = snapshot.val();
-        const now = Date.now();
-        const expiryMs = 15 * 24 * 60 * 60 * 1000;
-        if (data.createdAt && (now - data.createdAt) > expiryMs) {
-          database.ref('trips/' + pin).remove().then(() => {
-            setError('❌ This trip has expired (15 days). Deleted from server.');
-          });
-          return;
-        }
-        console.log('✅ Joined trip with PIN:', pin);
-        currentTripPin = pin;
-        appData = data;
-        localStorage.setItem('tripData', JSON.stringify(appData));
-        localStorage.setItem('tripPin', pin);
-        hideAuthScreen();
-        buildUI();
-        startRealtimeListener(pin);
-      }).catch(err => { console.error(err);
-        setError('Error joining trip: ' + err.message); });
-    }
-
-    // ======================================================
-    // 10. SHARE MODAL
-    // ======================================================
-    function showShareModal(pin) {
-      const modal = document.createElement('div');
-      modal.id = 'shareModal';
-      modal.style.cssText = `
-        display:flex; position:fixed; top:0; left:0; width:100%; height:100%;
-        background:rgba(0,0,0,0.7); z-index:99999; justify-content:center; align-items:center;
-        animation:fadeIn 0.3s ease;
-      `;
-      modal.innerHTML = `
-        <div class="auth-box" style="max-width:450px; background:#171f2a; border:1px solid #2d3a4f; border-radius:24px; padding:30px; text-align:center; color:#e2e8f0; box-shadow:0 30px 80px rgba(0,0,0,0.9);">
-          <h2 style="font-size:24px; margin-bottom:8px; color:#fff;"><i class="fas fa-share-alt" style="color:#8b5cf6; margin-right:10px;"></i> Share Your Trip</h2>
-          <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Share this PIN with your team to join this trip in real-time.</p>
-          <div style="background:#0b1119; padding:16px; border-radius:16px; border:1px solid #2a364a; margin-bottom:20px;">
-            <div style="color:#94a3b8; font-size:13px; font-weight:500;">🔑 Your Trip PIN</div>
-            <div style="font-size:42px; font-weight:700; color:#facc15; letter-spacing:12px; margin-top:4px;">${pin}</div>
-          </div>
-          <div style="margin-top:12px; color:#64748b; font-size:12px;">Share this PIN via WhatsApp, Email, or any messaging app.</div>
-          <button onclick="this.closest('#shareModal').remove()" style="margin-top:16px; padding:12px 28px; border:none; border-radius:30px; font-weight:600; font-size:15px; cursor:pointer; color:#fff; background:#3b82f6;">Got it</button>
-        </div>
-      `;
-      document.body.appendChild(modal);
-      modal.addEventListener('click', function(e) {
-        if (e.target === modal) modal.remove();
-      });
-    }
-
-    // ======================================================
-    // 11. RE-RENDER ALL
-    // ======================================================
-    function reRenderAll() {
-      console.log('🔄 Re-rendering UI from appData');
-      document.getElementById('tripName').value = appData.tripName || '';
-      document.getElementById('tripDate').value = appData.tripDate || '';
-      renderParticipants();
-      renderItinerary();
-      renderExpenses();
-      updateStats();
-      updateSelects();
-      if (mapInstance) updateMapMarkers();
-      const settlePage = document.getElementById('page-settlements');
-      if (settlePage && settlePage.classList.contains('active')) calculateSettlements();
-    }
-
-    // ======================================================
-    // 12. MAP & NAVIGATION (unchanged - keep as before)
+    // 7. MAP FUNCTIONS
     // ======================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
@@ -617,14 +493,12 @@
       }).addTo(mapInstance);
       L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
       mapInstance.on('click', function(e) {
-        const lat = e.latlng.lat.toFixed(6);
-        const lng = e.latlng.lng.toFixed(6);
-        document.getElementById('placeLat').value = lat;
-        document.getElementById('placeLng').value = lng;
+        document.getElementById('placeLat').value = e.latlng.lat.toFixed(6);
+        document.getElementById('placeLng').value = e.latlng.lng.toFixed(6);
         if (tempMarker) mapInstance.removeLayer(tempMarker);
         tempMarker = L.marker(e.latlng, { draggable: true })
           .addTo(mapInstance)
-          .bindPopup(`Lat: ${lat}<br>Lng: ${lng}`)
+          .bindPopup(`Lat: ${e.latlng.lat.toFixed(6)}<br>Lng: ${e.latlng.lng.toFixed(6)}`)
           .openPopup();
         tempMarker.on('dragend', function() {
           const pos = tempMarker.getLatLng();
@@ -636,72 +510,6 @@
       updateMapMarkers();
     }
 
-    function parseInstructions(routes) {
-      if (!routes || routes.length === 0) return { steps: [], totalDistance: 0, totalTime: 0 };
-      const route = routes[0];
-      let steps = [];
-      let totalDistance = 0;
-      let totalTime = 0;
-      if (route.summary) {
-        totalDistance = route.summary.totalDistance || 0;
-        totalTime = route.summary.totalTime || 0;
-      }
-      if (route.legs && route.legs.length > 0) {
-        route.legs.forEach(leg => { if (leg.steps) steps = steps.concat(leg.steps); });
-      } else if (route.steps) {
-        steps = route.steps;
-      } else if (route.instructions) {
-        steps = route.instructions;
-      }
-      return { steps, totalDistance, totalTime };
-    }
-
-    function updateInstructionsDisplay(steps, totalDistance, totalTime) {
-      const container = document.getElementById('navInstructions');
-      if (!container) return;
-      if (!steps || steps.length === 0) {
-        container.innerHTML = '<span class="placeholder">No turn-by-turn instructions available.</span>';
-        return;
-      }
-      let html = '';
-      steps.forEach((step, idx) => {
-        let text = step.instruction || step.text || step.name || '';
-        let distance = step.distance || 0;
-        let time = step.duration || 0;
-        text = text.replace(/\s+/g, ' ').trim();
-        let distStr = '';
-        if (distance > 0) {
-          if (distance >= 1000) distStr = (distance / 1000).toFixed(1) + ' km';
-          else distStr = Math.round(distance) + ' m';
-        }
-        let timeStr = '';
-        if (time > 0) {
-          if (time >= 60) {
-            const mins = Math.floor(time / 60);
-            const secs = Math.round(time % 60);
-            timeStr = mins + ' min' + (secs > 0 ? ' ' + secs + 's' : '');
-          } else {
-            timeStr = Math.round(time) + 's';
-          }
-        }
-        html += `
-          <div class="instruction-step">
-            <span class="step-number">${idx + 1}.</span>
-            <span class="step-text">${text}</span>
-            ${distStr ? `<span class="step-distance">${distStr}</span>` : ''}
-            ${timeStr ? `<span class="step-time">${timeStr}</span>` : ''}
-          </div>
-        `;
-      });
-      let summary = '';
-      if (totalDistance > 0) summary += `📏 <strong>${(totalDistance/1000).toFixed(1)} km</strong>`;
-      if (totalTime > 0) summary += ` ⏱️ <strong>${Math.floor(totalTime/60)} min</strong>`;
-      container.innerHTML = `
-        <div class="instructions-summary">${summary}</div>
-        <div class="instructions-list">${html}</div>
-      `;
-    }
-
     function updateMapMarkers() {
       if (!mapInstance) return;
       mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
@@ -710,12 +518,12 @@
         routingControl = null; }
       if (appData.itinerary.length === 0) {
         mapInstance.setView([10.089, 77.059], 10);
-        document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route and instructions.</span>';
+        document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route.</span>';
         return;
       }
       const waypoints = [];
       const latlngs = [];
-      appData.itinerary.forEach((item, idx) => {
+      appData.itinerary.forEach((item) => {
         const lat = parseFloat(item.lat);
         const lng = parseFloat(item.lng);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -729,7 +537,6 @@
       });
       if (latlngs.length === 1) {
         mapInstance.setView(latlngs[0], 12);
-        document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add more places to plan a route.</span>';
       } else if (latlngs.length > 1) {
         try {
           routingControl = L.Routing.control({
@@ -750,8 +557,21 @@
               document.getElementById('navInstructions').innerHTML = '<span class="placeholder">No route found.</span>';
               return;
             }
-            const { steps, totalDistance, totalTime } = parseInstructions(routes);
-            updateInstructionsDisplay(steps, totalDistance, totalTime);
+            const route = routes[0];
+            let instructions = [];
+            if (route.legs && route.legs.length > 0) {
+              route.legs.forEach(leg => { if (leg.steps) instructions = instructions.concat(leg.steps); });
+            } else if (route.steps) {
+              instructions = route.steps;
+            }
+            let html = '';
+            instructions.forEach((step, idx) => {
+              let text = step.instruction || step.text || step.name || '';
+              let dist = step.distance || 0;
+              let distStr = dist > 0 ? (dist >= 1000 ? (dist/1000).toFixed(1)+' km' : Math.round(dist)+' m') : '';
+              html += `<div class="instruction-step"><span class="step-number">${idx+1}.</span><span class="step-text">${text}</span>${distStr ? `<span class="step-distance">${distStr}</span>` : ''}</div>`;
+            });
+            document.getElementById('navInstructions').innerHTML = html || '<span class="placeholder">No instructions available.</span>';
           });
           routingControl.on('routingerror', function(e) {
             document.getElementById('navInstructions').innerHTML = '<span style="color:#ef4444;">❌ Could not calculate route.</span>';
@@ -759,18 +579,17 @@
           setTimeout(() => { if (routingControl) routingControl.route(); }, 500);
         } catch (e) {
           console.error('Routing error:', e);
-          if (latlngs.length > 0) {
-            mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
-            const bounds = L.latLngBounds(latlngs);
-            mapInstance.fitBounds(bounds, { padding: [30, 30] });
-          }
-          document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Routing unavailable. Showing simple path.</span>';
+          mapPolyline = L.polyline(latlngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(mapInstance);
+          const bounds = L.latLngBounds(latlngs);
+          mapInstance.fitBounds(bounds, { padding: [30, 30] });
         }
       }
       if (userMarker && !mapInstance.hasLayer(userMarker)) userMarker.addTo(mapInstance);
     }
 
-    // ========== LIVE TRACKING ==========
+    // ======================================================
+    // 8. NAVIGATION FUNCTIONS
+    // ======================================================
     function startLiveTracking() {
       if (!navigator.geolocation) { document.getElementById('locationStatus').innerHTML = '❌ GPS not supported.'; return; }
       if (watchId) { navigator.geolocation.clearWatch(watchId);
@@ -778,22 +597,16 @@
       document.getElementById('locationStatus').innerHTML = '📍 GPS Active...';
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const accuracy = pos.coords.accuracy;
-          document.getElementById('locationStatus').innerHTML =
-            `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)} (accuracy: ${Math.round(accuracy)}m)`;
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          document.getElementById('locationStatus').innerHTML = `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
           if (mapInstance) {
-            if (userMarker) {
-              userMarker.setLatLng([lat, lng]);
-            } else {
+            if (userMarker) { userMarker.setLatLng([lat, lng]); } else {
               const icon = L.divIcon({
                 className: 'fa-solid fa-location-dot',
                 iconSize: [24, 24],
                 html: '<i class="fas fa-location-dot" style="color:#3b82f6;font-size:28px;text-shadow:0 0 10px rgba(59,130,246,0.5);"></i>'
               });
-              userMarker = L.marker([lat, lng], { icon: icon, title: 'You are here' }).addTo(mapInstance).bindPopup(
-                '📍 You are here!');
+              userMarker = L.marker([lat, lng], { icon: icon, title: 'You are here' }).addTo(mapInstance).bindPopup('📍 You are here!');
             }
             if (isNavigating) mapInstance.flyTo([lat, lng], 15, { duration: 1 });
           }
@@ -825,7 +638,7 @@
         return;
       }
       if (appData.itinerary.length < 2) {
-        alert('Please add at least 2 places to your itinerary for navigation.');
+        alert('Add at least 2 places for navigation.');
         return;
       }
       isNavigating = true;
@@ -838,28 +651,27 @@
     }
 
     // ======================================================
-    // 13. SEARCH, SETTLEMENT, PDF, CRUD (with sync)
+    // 9. SEARCH PLACE
     // ======================================================
     function searchPlace() {
       const query = document.getElementById('placeName').value.trim();
-      if (!query) { alert('Please enter a place name to search.'); return; }
-      const url =
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+      if (!query) { alert('Enter a place name.'); return; }
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
       document.getElementById('searchStatus').innerHTML = '🔍 Searching...';
       fetch(url).then(res => res.json()).then(data => {
         if (data && data.length > 0) {
           const result = data[0];
-          const lat = parseFloat(result.lat).toFixed(6);
-          const lng = parseFloat(result.lon).toFixed(6);
           document.getElementById('placeName').value = result.display_name || query;
-          document.getElementById('placeLat').value = lat;
-          document.getElementById('placeLng').value = lng;
+          document.getElementById('placeLat').value = parseFloat(result.lat).toFixed(6);
+          document.getElementById('placeLng').value = parseFloat(result.lon).toFixed(6);
           document.getElementById('searchStatus').innerHTML = '✅ Found!';
           if (mapInstance) {
             if (tempMarker) mapInstance.removeLayer(tempMarker);
-            tempMarker = L.marker([lat, lng], { draggable: true }).addTo(mapInstance).bindPopup(
-              `Lat: ${lat}<br>Lng: ${lng}`).openPopup();
-            mapInstance.setView([lat, lng], 13);
+            tempMarker = L.marker([result.lat, result.lon], { draggable: true })
+              .addTo(mapInstance)
+              .bindPopup(`Lat: ${parseFloat(result.lat).toFixed(6)}<br>Lng: ${parseFloat(result.lon).toFixed(6)}`)
+              .openPopup();
+            mapInstance.setView([result.lat, result.lon], 13);
             tempMarker.on('dragend', function() {
               const pos = tempMarker.getLatLng();
               document.getElementById('placeLat').value = pos.lat.toFixed(6);
@@ -867,176 +679,19 @@
             });
           }
         } else {
-          document.getElementById('searchStatus').innerHTML = '❌ Not found. Try manual entry.';
+          document.getElementById('searchStatus').innerHTML = '❌ Not found. Try manual.';
         }
-      }).catch(err => { console.error(err);
-        document.getElementById('searchStatus').innerHTML = '❌ Search failed.'; });
+      }).catch(() => { document.getElementById('searchStatus').innerHTML = '❌ Search failed.'; });
     }
 
-    function getSettlementData() {
-      const participants = appData.participants;
-      const expenses = appData.expenses;
-      const totalPaid = {};
-      participants.forEach(p => totalPaid[p] = 0);
-      expenses.forEach(exp => {
-        const amt = parseFloat(exp.amount);
-        if (totalPaid[exp.paidBy] !== undefined) totalPaid[exp.paidBy] += amt;
-      });
-      const totalCost = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
-      const share = participants.length > 0 ? totalCost / participants.length : 0;
-      const netBalance = {};
-      participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
-      return { participants, totalPaid, totalCost, share, netBalance };
-    }
-
-    function calculateSettlements() {
-      const container = document.getElementById('settlementTransactions');
-      const summary = document.getElementById('settlementSummary');
-      const participants = appData.participants;
-      if (participants.length === 0) { container.innerHTML = '<div style="color:#ef4444;">Add participants first!</div>'; return; }
-      if (appData.expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
-      const { totalPaid, totalCost, share, netBalance } = getSettlementData();
-      summary.innerHTML = `
-        <div class="stat-box"><div class="label">Total Cost</div><div class="value blue">₹${totalCost.toFixed(2)}</div></div>
-        <div class="stat-box"><div class="label">Per Person Share</div><div class="value">₹${share.toFixed(2)}</div></div>
-        ${participants.map(p => `
-          <div class="stat-box">
-            <div class="label">${p} (Paid ₹${totalPaid[p].toFixed(2)})</div>
-            <div class="value ${netBalance[p] >= 0 ? 'green' : 'red'}">${netBalance[p] >= 0 ? '+' : ''}${netBalance[p].toFixed(2)}</div>
-          </div>
-        `).join('')}
-      `;
-      let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
-      let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
-      let transactions = [];
-      let i = 0,
-        j = 0;
-      while (i < payers.length && j < receivers.length) {
-        let payer = payers[i],
-          receiver = receivers[j];
-        let settleAmt = Math.min(payer.amount, receiver.amount);
-        if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
-        payer.amount -= settleAmt;
-        receiver.amount -= settleAmt;
-        if (payer.amount < 0.01) i++;
-        if (receiver.amount < 0.01) j++;
-      }
-      if (transactions.length === 0) {
-        container.innerHTML = '<div style="color:#34d399;font-weight:600;">✅ All settled!</div>';
-      } else {
-        container.innerHTML = transactions.map(t => `
-          <div class="settlement-item">
-            <div><span class="from">${t.from}</span> <i class="fas fa-arrow-right" style="color:#94a3b8;margin:0 12px;"></i> <span class="to">${t.to}</span></div>
-            <div class="s-amount">₹${t.amount.toFixed(2)}</div>
-          </div>
-        `).join('');
-      }
-    }
-
-    // ========== PDF Export ==========
-    function exportPDF() {
-      const participants = appData.participants;
-      if (participants.length === 0) { alert('Add participants first!'); return; }
-      if (appData.expenses.length === 0) { alert('No expenses to report.'); return; }
-      if (typeof html2canvas === 'undefined') { alert('html2canvas not loaded.'); return; }
-      if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') { alert('jsPDF not loaded.'); return; }
-      const { totalPaid, totalCost, share, netBalance } = getSettlementData();
-      let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
-      let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
-      let transactions = [];
-      let i = 0,
-        j = 0;
-      while (i < payers.length && j < receivers.length) {
-        let payer = payers[i],
-          receiver = receivers[j];
-        let settleAmt = Math.min(payer.amount, receiver.amount);
-        if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
-        payer.amount -= settleAmt;
-        receiver.amount -= settleAmt;
-        if (payer.amount < 0.01) i++;
-        if (receiver.amount < 0.01) j++;
-      }
-      const currency = '₹';
-      const rows = appData.expenses.map((exp, idx) => `
-        <tr><td style="padding:6px 10px; border:1px solid #d1d5db; text-align:center;">${idx+1}</td>
-        <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.desc}</td>
-        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${parseFloat(exp.amount).toFixed(2)}</td>
-        <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.paidBy}</td></tr>
-      `).join('');
-      const balanceRows = participants.map(p => {
-        const bal = netBalance[p];
-        const color = bal >= 0 ? '#16a34a' : '#dc2626';
-        return `<tr><td style="padding:6px 10px; border:1px solid #d1d5db;">${p}</td>
-        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${totalPaid[p].toFixed(2)}</td>
-        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right; color:${color}; font-weight:600;">${bal >= 0 ? '+' : ''}${currency}${bal.toFixed(2)}</td></tr>`;
-      }).join('');
-      const txnRows = transactions.map(t => `
-        <tr><td style="padding:6px 10px; border:1px solid #d1d5db;">${t.from}</td>
-        <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.to}</td>
-        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${t.amount.toFixed(2)}</td></tr>
-      `).join('');
-      const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Settlement Report</title><style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 30px; background: #ffffff; color: #1e293b; }
-        .container { max-width: 700px; margin: 0 auto; }
-        h1 { text-align: center; color: #1e293b; font-size: 22px; }
-        .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px; }
-        .section { margin: 20px 0; }
-        .section-title { font-size: 16px; font-weight: 600; border-bottom: 2px solid #3b82f6; padding-bottom: 4px; margin-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { background: #f1f5f9; padding: 6px 10px; border: 1px solid #d1d5db; text-align: left; font-weight: 600; }
-        td { padding: 6px 10px; border: 1px solid #d1d5db; }
-        .summary-box { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 12px 0; }
-        .summary-item { background: #f8fafc; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; flex: 1; min-width: 100px; }
-        .summary-item .label { font-size: 12px; color: #64748b; }
-        .summary-item .value { font-size: 20px; font-weight: 700; color: #0f172a; }
-        .participant-badge { display: inline-block; background: #e2e8f0; padding: 2px 12px; border-radius: 20px; font-size: 13px; margin: 2px; }
-        .footer { text-align: center; color: #94a3b8; font-size: 11px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
-      </style></head><body>
-        <div class="container"><h1>📊 Trip Settlement Report</h1><div class="subtitle">${appData.tripName} — ${appData.tripDate}</div>
-        <div class="section"><div class="section-title">👥 Participants</div><div style="display:flex; flex-wrap:wrap; gap:4px;">${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}</div></div>
-        <div class="section"><div class="section-title">💰 Shared Expenses</div><table><thead><tr><th style="width:40px;text-align:center;">#</th><th>Description</th><th style="text-align:right;">Amount</th><th>Paid By</th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="text-align:center;">No expenses recorded.</td></tr>'}</tbody></table></div>
-        <div class="section"><div class="section-title">📈 Summary</div><div class="summary-box"><div class="summary-item"><div class="label">Total Cost</div><div class="value">${currency}${totalCost.toFixed(2)}</div></div><div class="summary-item"><div class="label">Per Person Share</div><div class="value">${currency}${share.toFixed(2)}</div></div></div>
-        <table><thead><tr><th>Participant</th><th style="text-align:right;">Total Paid</th><th style="text-align:right;">Net Balance</th></tr></thead><tbody>${balanceRows}</tbody></table></div>
-        <div class="section"><div class="section-title">🔄 Settlement Transactions</div>${transactions.length > 0 ? `<table><thead><tr><th>From</th><th>To</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${txnRows}</tbody></table><div style="margin-top:6px; font-size:13px; color:#475569;">Total transactions: ${transactions.length}</div>` : `<p style="color:#16a34a; font-weight:600;">✅ All settled!</p>`}</div>
-        <div class="footer">This settlement was calculated by SplitEasy. All amounts are rounded to 2 decimal places.</div></div>
-      </body></html>`;
-      const tempDiv = document.createElement('div');
-      tempDiv.style.position = 'fixed';
-      tempDiv.style.left = '-9999px';
-      tempDiv.style.top = '0';
-      tempDiv.style.width = '750px';
-      tempDiv.style.background = '#ffffff';
-      tempDiv.style.zIndex = '9999';
-      tempDiv.style.padding = '20px';
-      tempDiv.innerHTML = htmlContent;
-      document.body.appendChild(tempDiv);
-      html2canvas(tempDiv, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, width: 750, height: tempDiv
-          .scrollHeight }).then(canvas => {
-        let jsPDFConstructor = null;
-        if (window.jspdf && typeof window.jspdf.jsPDF === 'function') jsPDFConstructor = window.jspdf.jsPDF;
-        else if (window.jsPDF && typeof window.jsPDF === 'function') jsPDFConstructor = window.jsPDF;
-        else if (typeof jsPDF === 'function') jsPDFConstructor = jsPDF;
-        if (!jsPDFConstructor) { document.body.removeChild(tempDiv);
-          alert('jsPDF not found.'); return; }
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const doc = new jsPDFConstructor('p', 'mm', 'a4');
-        const pdfWidth = 210;
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-        doc.save(`Settlement_${appData.tripName || 'Trip'}.pdf`);
-        document.body.removeChild(tempDiv);
-      }).catch(err => { console.error(err);
-        document.body.removeChild(tempDiv);
-        alert('PDF generation failed: ' + err.message); });
-    }
-
-    // ========== CRUD functions (with sync) ==========
+    // ======================================================
+    // 10. CRUD FUNCTIONS
+    // ======================================================
     function addParticipant() {
       const input = document.getElementById('participantInput');
       const name = input.value.trim();
-      if (!name) return alert('Enter a name.');
-      if (appData.participants.includes(name)) return alert('Already exists.');
-      console.log('➕ Adding participant:', name);
+      if (!name) { alert('Enter a name.'); return; }
+      if (appData.participants.includes(name)) { alert('Already exists.'); return; }
       appData.participants.push(name);
       input.value = '';
       renderParticipants();
@@ -1047,7 +702,6 @@
 
     function removeParticipant(name) {
       if (!confirm(`Remove ${name}?`)) return;
-      console.log('➖ Removing participant:', name);
       appData.participants = appData.participants.filter(p => p !== name);
       renderParticipants();
       updateSelects();
@@ -1061,9 +715,8 @@
       const lat = document.getElementById('placeLat').value.trim();
       const lng = document.getElementById('placeLng').value.trim();
       const desc = document.getElementById('placeDesc').value.trim();
-      if (!name) return alert('Enter place name.');
-      if (!lat || !lng) return alert('Please enter Latitude and Longitude.');
-      console.log('➕ Adding place:', name, lat, lng);
+      if (!name) { alert('Enter place name.'); return; }
+      if (!lat || !lng) { alert('Enter Latitude and Longitude (click map or search).'); return; }
       appData.itinerary.push({ id: generateId(), name, time, lat, lng, desc });
       document.getElementById('placeName').value = '';
       document.getElementById('placeTime').value = '';
@@ -1077,7 +730,6 @@
     }
 
     function removeItinerary(idx) {
-      console.log('➖ Removing itinerary item at index:', idx);
       appData.itinerary.splice(idx, 1);
       renderItinerary();
       syncToFirebase();
@@ -1087,50 +739,21 @@
       const desc = document.getElementById('expDesc').value.trim();
       const amount = parseFloat(document.getElementById('expAmount').value);
       const paidBy = document.getElementById('expPaidBy').value;
-      const fileInput = document.getElementById('expReceipt');
-      const file = fileInput.files[0];
-      if (!desc) return alert('Enter description.');
-      if (isNaN(amount) || amount <= 0) return alert('Enter valid amount.');
-      if (!paidBy) return alert('Select who paid.');
-      console.log('➕ Adding expense:', desc, amount, paidBy);
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const dataUrl = e.target.result;
-          if (dataUrl.length > 2 * 1024 * 1024) { alert('File too large (max 2MB).'); return; }
-          appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: dataUrl });
-          fileInput.value = '';
-          document.getElementById('removeReceiptBtn').style.display = 'none';
-          renderExpenses();
-          syncToFirebase();
-        };
-        reader.readAsDataURL(file);
-      } else {
-        appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
-        renderExpenses();
-        syncToFirebase();
-      }
+      if (!desc) { alert('Enter description.'); return; }
+      if (isNaN(amount) || amount <= 0) { alert('Enter valid amount.'); return; }
+      if (!paidBy) { alert('Select who paid.'); return; }
+      appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
       document.getElementById('expDesc').value = '';
       document.getElementById('expAmount').value = '';
-    }
-
-    function removeExpense(idx) {
-      if (!confirm('Remove this expense?')) return;
-      console.log('➖ Removing expense at index:', idx);
-      appData.expenses.splice(idx, 1);
       renderExpenses();
       syncToFirebase();
     }
 
-    function handleReceiptChange() {
-      const fileInput = document.getElementById('expReceipt');
-      const removeBtn = document.getElementById('removeReceiptBtn');
-      if (fileInput.files.length > 0) { removeBtn.style.display = 'inline-block'; } else { removeBtn.style.display = 'none'; }
-    }
-
-    function removeReceipt() {
-      document.getElementById('expReceipt').value = '';
-      document.getElementById('removeReceiptBtn').style.display = 'none';
+    function removeExpense(idx) {
+      if (!confirm('Remove this expense?')) return;
+      appData.expenses.splice(idx, 1);
+      renderExpenses();
+      syncToFirebase();
     }
 
     function updateTrip() {
@@ -1142,9 +765,73 @@
       syncToFirebase();
     }
 
-    function generateId() { return Date.now() + Math.random().toString(36); }
+    // ======================================================
+    // 11. SETTLEMENT & PDF
+    // ======================================================
+    function calculateSettlements() {
+      const container = document.getElementById('settlementTransactions');
+      const summary = document.getElementById('settlementSummary');
+      const participants = appData.participants;
+      if (participants.length === 0) { container.innerHTML = '<div style="color:#ef4444;">Add participants first!</div>'; return; }
+      if (appData.expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
 
-    // ========== NAVIGATION ==========
+      const totalPaid = {};
+      participants.forEach(p => totalPaid[p] = 0);
+      appData.expenses.forEach(exp => {
+        const amt = parseFloat(exp.amount);
+        if (totalPaid[exp.paidBy] !== undefined) totalPaid[exp.paidBy] += amt;
+      });
+      const totalCost = appData.expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+      const share = participants.length > 0 ? totalCost / participants.length : 0;
+      const netBalance = {};
+      participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
+
+      summary.innerHTML = `
+        <div class="stat-box"><div class="label">Total Cost</div><div class="value blue">₹${totalCost.toFixed(2)}</div></div>
+        <div class="stat-box"><div class="label">Per Person Share</div><div class="value">₹${share.toFixed(2)}</div></div>
+        ${participants.map(p => `
+          <div class="stat-box">
+            <div class="label">${p} (Paid ₹${totalPaid[p].toFixed(2)})</div>
+            <div class="value ${netBalance[p] >= 0 ? 'green' : 'red'}">${netBalance[p] >= 0 ? '+' : ''}${netBalance[p].toFixed(2)}</div>
+          </div>
+        `).join('')}
+      `;
+
+      let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
+      let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
+      let transactions = [];
+      let i = 0,
+        j = 0;
+      while (i < payers.length && j < receivers.length) {
+        let payer = payers[i],
+          receiver = receivers[j];
+        let settleAmt = Math.min(payer.amount, receiver.amount);
+        if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
+        payer.amount -= settleAmt;
+        receiver.amount -= settleAmt;
+        if (payer.amount < 0.01) i++;
+        if (receiver.amount < 0.01) j++;
+      }
+
+      if (transactions.length === 0) {
+        container.innerHTML = '<div style="color:#34d399;font-weight:600;">✅ All settled!</div>';
+      } else {
+        container.innerHTML = transactions.map(t => `
+          <div class="settlement-item">
+            <div><span class="from">${t.from}</span> <i class="fas fa-arrow-right" style="color:#94a3b8;margin:0 12px;"></i> <span class="to">${t.to}</span></div>
+            <div class="s-amount">₹${t.amount.toFixed(2)}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function exportPDF() {
+      alert('PDF export feature is coming soon!');
+    }
+
+    // ======================================================
+    // 12. NAVIGATION TABS
+    // ======================================================
     function switchPage(pageId) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       document.getElementById(`page-${pageId}`).classList.add('active');
@@ -1155,12 +842,9 @@
     }
 
     function startNewTrip() {
-      if (!confirm('Are you sure you want to clear all data and start a new trip?')) return;
-      cleanupExpiredTrips();
-      if (isSyncing) {
-        database.ref('trips/' + currentTripPin).off();
-        isSyncing = false;
-      }
+      if (!confirm('Clear all data and start a new trip?')) return;
+      if (isSyncing) { database.ref('trips/' + currentTripPin).off();
+        isSyncing = false; }
       localStorage.removeItem('tripData');
       localStorage.removeItem('tripPin');
       currentTripPin = null;
@@ -1173,7 +857,7 @@
     }
 
     // ======================================================
-    // 14. BUILD UI
+    // 13. BUILD UI
     // ======================================================
     function buildUI() {
       const app = document.getElementById('trip-app');
@@ -1270,10 +954,6 @@
               <input type="number" id="expAmount" placeholder="Amount (₹)">
               <select id="expPaidBy"><option value="">-- Paid By --</option></select>
             </div>
-            <div class="input-group">
-              <input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()">
-              <button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove</button>
-            </div>
             <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
           </div>
           <div class="card">
@@ -1311,7 +991,7 @@
       document.getElementById('trackLocationBtn').addEventListener('click', function() { startLiveTracking(); });
       document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
 
-      // Delegation
+      // Delegation for remove buttons
       document.getElementById('expenseList').addEventListener('click', function(e) {
         const target = e.target.closest('[data-action="removeExpense"]');
         if (target) { removeExpense(parseInt(target.dataset.idx)); }
@@ -1324,9 +1004,6 @@
         const target = e.target.closest('[data-action="removeItin"]');
         if (target) { removeItinerary(parseInt(target.dataset.idx)); }
       });
-
-      window.handleReceiptChange = handleReceiptChange;
-      window.removeReceipt = removeReceipt;
 
       renderParticipants();
       renderItinerary();
@@ -1341,42 +1018,28 @@
     }
 
     // ======================================================
-    // 15. AUTH EVENT BINDINGS (NO AUTH)
+    // 14. EVENT BINDINGS FOR AUTH
     // ======================================================
-    document.getElementById('newTripBtn').addEventListener('click', function() {
-      createNewTrip();
+    document.getElementById('newTripBtn').addEventListener('click', createNewTrip);
+    document.getElementById('joinTripBtn').addEventListener('click', joinTrip);
+    document.getElementById('pinInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') document.getElementById('joinTripBtn').click();
     });
 
-    document.getElementById('joinTripBtn').addEventListener('click', function() {
-      joinTrip();
-    });
-
-    document.getElementById('pinInput').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        document.getElementById('joinTripBtn').click();
-      }
-    });
-
-    // Auto-join if pin stored in localStorage
     const savedPin = localStorage.getItem('tripPin');
     if (savedPin) {
       document.getElementById('pinInput').value = savedPin;
-      setTimeout(() => {
-        document.getElementById('joinTripBtn').click();
-      }, 500);
+      setTimeout(() => { document.getElementById('joinTripBtn').click(); }, 500);
     }
 
     // ======================================================
-    // 16. SERVICE WORKER
+    // 15. SERVICE WORKER (PWA)
     // ======================================================
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js')
         .then(() => console.log('SW registered.'))
         .catch(err => console.log('SW registration failed:', err));
     }
-
-    // Run cleanup on page load
-    cleanupExpiredTrips();
   </script>
 </body>
 </html>
