@@ -2,7 +2,7 @@
   "name": "Trip Planner & Expense Splitter",
   "short_name": "Trip Planner",
   "description": "Plan your trips, track expenses, and settle bills easily.",
-  "start_url": "/",
+  "start_url": "/trip-planner/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#0b0e14",
