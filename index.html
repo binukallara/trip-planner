@@ -1,4 +1,4 @@
-<!-- Trip Planner - Fully Working (Places + Expenses) -->
+<!-- Trip Planner - Full Working with PDF & Receipt Upload -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -32,7 +32,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <style>
-    /* ========== ALL STYLES (same as before) ========== */
+    /* ========== ALL STYLES ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
     ::-webkit-scrollbar { width: 6px; }
@@ -95,7 +95,7 @@
     .list-item .info .title { font-weight: 600; color: #f1f5f9; }
     .list-item .info .sub { font-size: 13px; color: #94a3b8; }
     .list-item .amount { font-weight: 700; color: #facc15; }
-    .receipt-thumb { max-width: 60px; max-height: 60px; border-radius: 8px; cursor: pointer; border: 1px solid #334155; }
+    .receipt-thumb { max-width: 80px; max-height: 80px; border-radius: 8px; cursor: pointer; border: 1px solid #334155; object-fit: cover; }
     .settlement-item { background: #1a2332; border-radius: 12px; padding: 16px 20px; border: 1px solid #2d3a4f; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     .settlement-item .from { color: #f87171; font-weight: 700; }
     .settlement-item .to { color: #34d399; font-weight: 700; }
@@ -228,7 +228,7 @@
     let isNavigating = false;
 
     // ======================================================
-    // 2. APP DATA (with default empty arrays)
+    // 2. APP DATA
     // ======================================================
     let appData = {
       tripName: 'New Trip',
@@ -264,7 +264,6 @@
       isLocalUpdate = true;
       if (!appData.createdAt) appData.createdAt = firebase.database.ServerValue.TIMESTAMP;
       console.log('📤 Syncing data to Firebase for PIN:', currentTripPin);
-      console.log('📤 Data:', appData);
       database.ref('trips/' + currentTripPin).set(appData)
         .then(() => {
           isLocalUpdate = false;
@@ -279,7 +278,7 @@
           isLocalUpdate = false;
           console.error('❌ Sync error:', err);
           updateSyncStatus('❌ Sync failed: ' + err.message, true);
-          alert('❌ Failed to save: ' + err.message + '\nCheck Firebase rules (must be public).');
+          alert('❌ Failed to save: ' + err.message);
         });
     }
 
@@ -297,8 +296,7 @@
         }
         const remoteData = snapshot.val();
         if (isLocalUpdate) { isLocalUpdate = false; return; }
-        console.log('📥 Remote data updated:', remoteData);
-        // Ensure arrays exist
+        console.log('📥 Remote data updated');
         appData = {
           ...remoteData,
           participants: remoteData.participants || [],
@@ -372,7 +370,6 @@
             return;
           }
           const data = snapshot.val();
-          // Ensure arrays exist
           data.participants = data.participants || [];
           data.itinerary = data.itinerary || [];
           data.expenses = data.expenses || [];
@@ -416,7 +413,7 @@
     // 6. RENDER FUNCTIONS
     // ======================================================
     function reRenderAll() {
-      console.log('🔄 Re-rendering UI from appData');
+      console.log('🔄 Re-rendering UI');
       document.getElementById('tripName').value = appData.tripName || '';
       document.getElementById('tripDate').value = appData.tripDate || '';
       renderParticipants();
@@ -469,6 +466,7 @@
       if (mapInstance) updateMapMarkers();
     }
 
+    // ========== RENDER EXPENSES WITH RECEIPT ==========
     function renderExpenses() {
       const c = document.getElementById('expenseList');
       if (!c) return;
@@ -476,18 +474,33 @@
       if (expenses.length === 0) {
         c.innerHTML = '<div style="color:#64748b;padding:16px;">No expenses recorded.</div>';
       } else {
-        c.innerHTML = expenses.map((exp, idx) => `
-          <div class="list-item" style="border-left-color:#facc15;">
-            <div class="info">
-              <div class="title">${exp.desc}</div>
-              <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
+        c.innerHTML = expenses.map((exp, idx) => {
+          let receiptHtml = '';
+          if (exp.receipt) {
+            const isImage = exp.receipt.startsWith('data:image');
+            const isPdf = exp.receipt.startsWith('data:application/pdf');
+            if (isImage) {
+              receiptHtml = `<img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" onclick="window.open('${exp.receipt}','_blank')" />`;
+            } else if (isPdf) {
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file-pdf"></i> Receipt</a>`;
+            } else {
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file"></i> Receipt</a>`;
+            }
+          }
+          return `
+            <div class="list-item" style="border-left-color:#facc15;">
+              <div class="info">
+                <div class="title">${exp.desc}</div>
+                <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
+                ${receiptHtml ? `<div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>` : ''}
+              </div>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
+                <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
+              </div>
             </div>
-            <div style="display:flex; align-items:center; gap:12px;">
-              <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
-              <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
-            </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
       }
       updateStats();
     }
@@ -502,7 +515,7 @@
     }
 
     // ======================================================
-    // 7. MAP FUNCTIONS (unchanged)
+    // 7. MAP FUNCTIONS
     // ======================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
@@ -713,7 +726,7 @@
     }
 
     // ======================================================
-    // 10. CRUD FUNCTIONS (FIXED)
+    // 10. CRUD FUNCTIONS
     // ======================================================
     function addParticipant() {
       console.log('➕ addParticipant called');
@@ -728,7 +741,6 @@
       updateSelects();
       updateStats();
       syncToFirebase();
-      console.log('✅ Participant added:', name);
     }
 
     function removeParticipant(name) {
@@ -748,7 +760,6 @@
       const lat = document.getElementById('placeLat').value.trim();
       const lng = document.getElementById('placeLng').value.trim();
       const desc = document.getElementById('placeDesc').value.trim();
-      console.log('📝 Place data:', { name, time, lat, lng, desc });
 
       if (!name) { alert('Enter place name.'); return; }
       if (!lat || !lng) { alert('Enter Latitude and Longitude (click map or search).'); return; }
@@ -764,7 +775,6 @@
         tempMarker = null; }
       renderItinerary();
       syncToFirebase();
-      console.log('✅ Place added:', name);
     }
 
     function removeItinerary(idx) {
@@ -774,24 +784,45 @@
       syncToFirebase();
     }
 
+    // ========== ADD EXPENSE WITH RECEIPT UPLOAD ==========
     function addExpense() {
       console.log('➕ addExpense called');
       const desc = document.getElementById('expDesc').value.trim();
       const amount = parseFloat(document.getElementById('expAmount').value);
       const paidBy = document.getElementById('expPaidBy').value;
-      console.log('📝 Expense data:', { desc, amount, paidBy });
+      const fileInput = document.getElementById('expReceipt');
+      const file = fileInput.files[0];
 
       if (!desc) { alert('Enter description.'); return; }
       if (isNaN(amount) || amount <= 0) { alert('Enter valid amount.'); return; }
       if (!paidBy) { alert('Select who paid.'); return; }
 
       if (!appData.expenses) appData.expenses = [];
-      appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
+
+      // If file selected, read as Data URL
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const dataUrl = e.target.result;
+          if (dataUrl.length > 2 * 1024 * 1024) {
+            alert('File too large (max 2MB). Please choose a smaller file.');
+            return;
+          }
+          appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: dataUrl });
+          fileInput.value = '';
+          document.getElementById('removeReceiptBtn').style.display = 'none';
+          renderExpenses();
+          syncToFirebase();
+        };
+        reader.readAsDataURL(file);
+      } else {
+        appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
+        renderExpenses();
+        syncToFirebase();
+      }
+
       document.getElementById('expDesc').value = '';
       document.getElementById('expAmount').value = '';
-      renderExpenses();
-      syncToFirebase();
-      console.log('✅ Expense added:', desc);
     }
 
     function removeExpense(idx) {
@@ -800,6 +831,21 @@
       appData.expenses.splice(idx, 1);
       renderExpenses();
       syncToFirebase();
+    }
+
+    function handleReceiptChange() {
+      const fileInput = document.getElementById('expReceipt');
+      const removeBtn = document.getElementById('removeReceiptBtn');
+      if (fileInput.files.length > 0) {
+        removeBtn.style.display = 'inline-block';
+      } else {
+        removeBtn.style.display = 'none';
+      }
+    }
+
+    function removeReceipt() {
+      document.getElementById('expReceipt').value = '';
+      document.getElementById('removeReceiptBtn').style.display = 'none';
     }
 
     function updateTrip() {
@@ -812,7 +858,7 @@
     }
 
     // ======================================================
-    // 11. SETTLEMENT & PDF
+    // 11. SETTLEMENT
     // ======================================================
     function calculateSettlements() {
       const container = document.getElementById('settlementTransactions');
@@ -872,12 +918,250 @@
       }
     }
 
+    // ======================================================
+    // 12. PDF EXPORT (FULLY WORKING)
+    // ======================================================
     function exportPDF() {
-      alert('PDF export feature is coming soon!');
+      const participants = appData.participants || [];
+      const expenses = appData.expenses || [];
+
+      if (participants.length === 0) {
+        alert('Add participants first!');
+        return;
+      }
+      if (expenses.length === 0) {
+        alert('No expenses to report.');
+        return;
+      }
+
+      if (typeof html2canvas === 'undefined') {
+        alert('html2canvas library not loaded. Please refresh and try again.');
+        return;
+      }
+      if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+        alert('jsPDF library not loaded. Please refresh and try again.');
+        return;
+      }
+
+      // Calculate settlement data
+      const totalPaid = {};
+      participants.forEach(p => totalPaid[p] = 0);
+      expenses.forEach(exp => {
+        const amt = parseFloat(exp.amount);
+        if (totalPaid[exp.paidBy] !== undefined) totalPaid[exp.paidBy] += amt;
+      });
+      const totalCost = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+      const share = participants.length > 0 ? totalCost / participants.length : 0;
+      const netBalance = {};
+      participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
+
+      // Build HTML content for PDF
+      const currency = '₹';
+      const expenseRows = expenses.map((exp, idx) => `
+        <tr>
+          <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:center;">${idx+1}</td>
+          <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.desc}</td>
+          <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${parseFloat(exp.amount).toFixed(2)}</td>
+          <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.paidBy}</td>
+        </tr>
+      `).join('');
+
+      const balanceRows = participants.map(p => {
+        const bal = netBalance[p];
+        const color = bal >= 0 ? '#16a34a' : '#dc2626';
+        return `
+          <tr>
+            <td style="padding:6px 10px; border:1px solid #d1d5db;">${p}</td>
+            <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${totalPaid[p].toFixed(2)}</td>
+            <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right; color:${color}; font-weight:600;">${bal >= 0 ? '+' : ''}${currency}${bal.toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Settlement transactions
+      let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
+      let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
+      let transactions = [];
+      let i = 0,
+        j = 0;
+      while (i < payers.length && j < receivers.length) {
+        let payer = payers[i],
+          receiver = receivers[j];
+        let settleAmt = Math.min(payer.amount, receiver.amount);
+        if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
+        payer.amount -= settleAmt;
+        receiver.amount -= settleAmt;
+        if (payer.amount < 0.01) i++;
+        if (receiver.amount < 0.01) j++;
+      }
+
+      const txnRows = transactions.map(t => `
+        <tr>
+          <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.from}</td>
+          <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.to}</td>
+          <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${t.amount.toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Settlement Report</title>
+          <style>
+            body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 30px; background: #ffffff; color: #1e293b; }
+            .container { max-width: 700px; margin: 0 auto; }
+            h1 { text-align: center; color: #1e293b; font-size: 22px; }
+            .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px; }
+            .section { margin: 20px 0; }
+            .section-title { font-size: 16px; font-weight: 600; border-bottom: 2px solid #3b82f6; padding-bottom: 4px; margin-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; font-size: 13px; }
+            th { background: #f1f5f9; padding: 6px 10px; border: 1px solid #d1d5db; text-align: left; font-weight: 600; }
+            td { padding: 6px 10px; border: 1px solid #d1d5db; }
+            .summary-box { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 12px 0; }
+            .summary-item { background: #f8fafc; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; flex: 1; min-width: 100px; }
+            .summary-item .label { font-size: 12px; color: #64748b; }
+            .summary-item .value { font-size: 20px; font-weight: 700; color: #0f172a; }
+            .participant-badge { display: inline-block; background: #e2e8f0; padding: 2px 12px; border-radius: 20px; font-size: 13px; margin: 2px; }
+            .footer { text-align: center; color: #94a3b8; font-size: 11px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>📊 Trip Settlement Report</h1>
+            <div class="subtitle">${appData.tripName} — ${appData.tripDate}</div>
+
+            <div class="section">
+              <div class="section-title">👥 Participants</div>
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                ${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">💰 Shared Expenses</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:40px; text-align:center;">#</th>
+                    <th>Description</th>
+                    <th style="text-align:right;">Amount</th>
+                    <th>Paid By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${expenseRows || '<tr><td colspan="4" style="text-align:center;">No expenses recorded.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="section">
+              <div class="section-title">📈 Summary</div>
+              <div class="summary-box">
+                <div class="summary-item">
+                  <div class="label">Total Cost</div>
+                  <div class="value">${currency}${totalCost.toFixed(2)}</div>
+                </div>
+                <div class="summary-item">
+                  <div class="label">Per Person Share</div>
+                  <div class="value">${currency}${share.toFixed(2)}</div>
+                </div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Participant</th>
+                    <th style="text-align:right;">Total Paid</th>
+                    <th style="text-align:right;">Net Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${balanceRows}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="section">
+              <div class="section-title">🔄 Settlement Transactions</div>
+              ${transactions.length > 0 ? `
+                <table>
+                  <thead>
+                    <tr>
+                      <th>From</th>
+                      <th>To</th>
+                      <th style="text-align:right;">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${txnRows}
+                  </tbody>
+                </table>
+                <div style="margin-top:6px; font-size:13px; color:#475569;">Total transactions: ${transactions.length}</div>
+              ` : `
+                <p style="color:#16a34a; font-weight:600;">✅ All settled!</p>
+              `}
+            </div>
+
+            <div class="footer">
+              This settlement was calculated by Trip Planner. All amounts are rounded to 2 decimal places.
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Create temporary div for PDF generation
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'fixed';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '0';
+      tempDiv.style.width = '750px';
+      tempDiv.style.background = '#ffffff';
+      tempDiv.style.zIndex = '9999';
+      tempDiv.style.padding = '20px';
+      tempDiv.innerHTML = htmlContent;
+      document.body.appendChild(tempDiv);
+
+      html2canvas(tempDiv, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+        width: 750,
+        height: tempDiv.scrollHeight,
+      }).then(canvas => {
+        let jsPDFConstructor = null;
+        if (window.jspdf && typeof window.jspdf.jsPDF === 'function') {
+          jsPDFConstructor = window.jspdf.jsPDF;
+        } else if (window.jsPDF && typeof window.jsPDF === 'function') {
+          jsPDFConstructor = window.jsPDF;
+        } else if (typeof jsPDF === 'function') {
+          jsPDFConstructor = jsPDF;
+        }
+
+        if (!jsPDFConstructor) {
+          document.body.removeChild(tempDiv);
+          alert('jsPDF library not found.');
+          return;
+        }
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const doc = new jsPDFConstructor('p', 'mm', 'a4');
+        const pdfWidth = 210;
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        doc.save(`Settlement_${appData.tripName || 'Trip'}.pdf`);
+        document.body.removeChild(tempDiv);
+      }).catch(err => {
+        console.error(err);
+        document.body.removeChild(tempDiv);
+        alert('PDF generation failed: ' + err.message);
+      });
     }
 
     // ======================================================
-    // 12. NAVIGATION TABS
+    // 13. NAVIGATION TABS
     // ======================================================
     function switchPage(pageId) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -904,7 +1188,7 @@
     }
 
     // ======================================================
-    // 13. BUILD UI
+    // 14. BUILD UI
     // ======================================================
     function buildUI() {
       const app = document.getElementById('trip-app');
@@ -1001,7 +1285,12 @@
               <input type="number" id="expAmount" placeholder="Amount (₹)">
               <select id="expPaidBy"><option value="">-- Paid By --</option></select>
             </div>
+            <div class="input-group">
+              <input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()">
+              <button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button>
+            </div>
             <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
+            <div style="color:#94a3b8; font-size:13px; margin-top:8px;">💰 Shared equally among all participants. Optional receipt upload.</div>
           </div>
           <div class="card">
             <h3><i class="fas fa-list-ul"></i> All Expenses</h3>
@@ -1038,6 +1327,10 @@
       document.getElementById('trackLocationBtn').addEventListener('click', function() { startLiveTracking(); });
       document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
 
+      // Expose receipt functions globally
+      window.handleReceiptChange = handleReceiptChange;
+      window.removeReceipt = removeReceipt;
+
       // Delegation for remove buttons
       document.getElementById('expenseList').addEventListener('click', function(e) {
         const target = e.target.closest('[data-action="removeExpense"]');
@@ -1065,7 +1358,7 @@
     }
 
     // ======================================================
-    // 14. EVENT BINDINGS FOR AUTH
+    // 15. EVENT BINDINGS FOR AUTH
     // ======================================================
     document.getElementById('newTripBtn').addEventListener('click', createNewTrip);
     document.getElementById('joinTripBtn').addEventListener('click', joinTrip);
@@ -1080,7 +1373,7 @@
     }
 
     // ======================================================
-    // 15. SERVICE WORKER (PWA)
+    // 16. SERVICE WORKER (PWA)
     // ======================================================
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js')
