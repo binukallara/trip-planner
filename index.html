@@ -1,4 +1,4 @@
-<!-- Trip Planner with Firebase - Fully Working -->
+<!-- Trip Planner - Fully Working (Places + Expenses) -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -32,7 +32,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <style>
-    /* ========== ALL STYLES ========== */
+    /* ========== ALL STYLES (same as before) ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
     ::-webkit-scrollbar { width: 6px; }
@@ -228,7 +228,7 @@
     let isNavigating = false;
 
     // ======================================================
-    // 2. APP DATA
+    // 2. APP DATA (with default empty arrays)
     // ======================================================
     let appData = {
       tripName: 'New Trip',
@@ -249,6 +249,7 @@
       if (!el) return;
       el.textContent = msg;
       el.className = 'sync-status ' + (isError ? 'error' : 'success');
+      console.log('🔔 Sync Status:', msg);
     }
 
     // ======================================================
@@ -256,15 +257,19 @@
     // ======================================================
     function syncToFirebase() {
       if (!currentTripPin) {
-        updateSyncStatus('No active trip', true);
+        updateSyncStatus('❌ No active PIN', true);
+        alert('No active trip. Please join or create a trip first.');
         return;
       }
       isLocalUpdate = true;
       if (!appData.createdAt) appData.createdAt = firebase.database.ServerValue.TIMESTAMP;
+      console.log('📤 Syncing data to Firebase for PIN:', currentTripPin);
+      console.log('📤 Data:', appData);
       database.ref('trips/' + currentTripPin).set(appData)
         .then(() => {
           isLocalUpdate = false;
           updateSyncStatus('✅ Synced');
+          console.log('✅ Sync successful');
           setTimeout(() => {
             const el = document.getElementById('syncStatus');
             if (el) el.textContent = 'Real-time sync enabled 🔄';
@@ -272,15 +277,16 @@
         })
         .catch(err => {
           isLocalUpdate = false;
-          console.error('Sync error:', err);
+          console.error('❌ Sync error:', err);
           updateSyncStatus('❌ Sync failed: ' + err.message, true);
-          alert('❌ Failed to save: ' + err.message);
+          alert('❌ Failed to save: ' + err.message + '\nCheck Firebase rules (must be public).');
         });
     }
 
     function startRealtimeListener(pin) {
       if (isSyncing) return;
       isSyncing = true;
+      console.log('👂 Starting real-time listener for PIN:', pin);
       database.ref('trips/' + pin).on('value', (snapshot) => {
         if (!snapshot.exists()) {
           localStorage.removeItem('tripPin');
@@ -291,7 +297,14 @@
         }
         const remoteData = snapshot.val();
         if (isLocalUpdate) { isLocalUpdate = false; return; }
-        appData = remoteData;
+        console.log('📥 Remote data updated:', remoteData);
+        // Ensure arrays exist
+        appData = {
+          ...remoteData,
+          participants: remoteData.participants || [],
+          itinerary: remoteData.itinerary || [],
+          expenses: remoteData.expenses || []
+        };
         localStorage.setItem('tripData', JSON.stringify(appData));
         reRenderAll();
       }, (error) => {
@@ -325,6 +338,7 @@
         expenses: [],
         createdAt: firebase.database.ServerValue.TIMESTAMP
       };
+      console.log('🆕 Creating new trip with PIN:', pin);
       database.ref('trips/' + pin).set(newTripData)
         .then(() => {
           currentTripPin = pin;
@@ -350,6 +364,7 @@
         setError('Enter a valid 4-digit PIN.');
         return;
       }
+      console.log('🔑 Joining trip with PIN:', pin);
       database.ref('trips/' + pin).once('value')
         .then(snapshot => {
           if (!snapshot.exists()) {
@@ -357,6 +372,10 @@
             return;
           }
           const data = snapshot.val();
+          // Ensure arrays exist
+          data.participants = data.participants || [];
+          data.itinerary = data.itinerary || [];
+          data.expenses = data.expenses || [];
           currentTripPin = pin;
           appData = data;
           localStorage.setItem('tripData', JSON.stringify(appData));
@@ -397,6 +416,7 @@
     // 6. RENDER FUNCTIONS
     // ======================================================
     function reRenderAll() {
+      console.log('🔄 Re-rendering UI from appData');
       document.getElementById('tripName').value = appData.tripName || '';
       document.getElementById('tripDate').value = appData.tripDate || '';
       renderParticipants();
@@ -410,7 +430,8 @@
     function renderParticipants() {
       const c = document.getElementById('participantChips');
       if (!c) return;
-      c.innerHTML = appData.participants.map(p =>
+      const participants = appData.participants || [];
+      c.innerHTML = participants.map(p =>
         `<div class="chip">${p} <span class="remove-chip" data-action="removePart" data-name="${p}"><i class="fas fa-times"></i></span></div>`
       ).join('');
       updateSelects();
@@ -420,17 +441,19 @@
     function updateSelects() {
       const paidBy = document.getElementById('expPaidBy');
       if (!paidBy) return;
-      const opts = appData.participants.map(p => `<option value="${p}">${p}</option>`).join('');
+      const participants = appData.participants || [];
+      const opts = participants.map(p => `<option value="${p}">${p}</option>`).join('');
       paidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
     }
 
     function renderItinerary() {
       const c = document.getElementById('itineraryList');
       if (!c) return;
-      if (appData.itinerary.length === 0) {
+      const itinerary = appData.itinerary || [];
+      if (itinerary.length === 0) {
         c.innerHTML = '<div style="color:#64748b;padding:16px;">No places added yet.</div>';
       } else {
-        c.innerHTML = appData.itinerary.map((item, idx) => `
+        c.innerHTML = itinerary.map((item, idx) => `
           <div class="list-item" style="border-left-color:#10b981;">
             <div class="info">
               <div class="title">📍 ${item.name}</div>
@@ -441,18 +464,19 @@
           </div>
         `).join('');
       }
-      document.getElementById('itineraryCount').innerText = `(${appData.itinerary.length} places)`;
-      document.getElementById('dashPlaceCount').innerText = appData.itinerary.length;
+      document.getElementById('itineraryCount').innerText = `(${itinerary.length} places)`;
+      document.getElementById('dashPlaceCount').innerText = itinerary.length;
       if (mapInstance) updateMapMarkers();
     }
 
     function renderExpenses() {
       const c = document.getElementById('expenseList');
       if (!c) return;
-      if (appData.expenses.length === 0) {
+      const expenses = appData.expenses || [];
+      if (expenses.length === 0) {
         c.innerHTML = '<div style="color:#64748b;padding:16px;">No expenses recorded.</div>';
       } else {
-        c.innerHTML = appData.expenses.map((exp, idx) => `
+        c.innerHTML = expenses.map((exp, idx) => `
           <div class="list-item" style="border-left-color:#facc15;">
             <div class="info">
               <div class="title">${exp.desc}</div>
@@ -469,14 +493,16 @@
     }
 
     function updateStats() {
-      document.getElementById('dashParticipantCount').innerText = appData.participants.length;
-      const total = appData.expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+      const participants = appData.participants || [];
+      const expenses = appData.expenses || [];
+      document.getElementById('dashParticipantCount').innerText = participants.length;
+      const total = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
       document.getElementById('dashTotalCost').innerHTML = '₹' + total.toFixed(2);
-      document.getElementById('tripStatus').innerHTML = appData.participants.length > 0 ? `👥 ${appData.participants.length} members` : '⚡ Add members';
+      document.getElementById('tripStatus').innerHTML = participants.length > 0 ? `👥 ${participants.length} members` : '⚡ Add members';
     }
 
     // ======================================================
-    // 7. MAP FUNCTIONS
+    // 7. MAP FUNCTIONS (unchanged)
     // ======================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
@@ -516,14 +542,15 @@
       mapMarkers = [];
       if (routingControl) { mapInstance.removeControl(routingControl);
         routingControl = null; }
-      if (appData.itinerary.length === 0) {
+      const itinerary = appData.itinerary || [];
+      if (itinerary.length === 0) {
         mapInstance.setView([10.089, 77.059], 10);
         document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route.</span>';
         return;
       }
       const waypoints = [];
       const latlngs = [];
-      appData.itinerary.forEach((item) => {
+      itinerary.forEach((item) => {
         const lat = parseFloat(item.lat);
         const lng = parseFloat(item.lng);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -637,7 +664,8 @@
         document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Navigation stopped.</span>';
         return;
       }
-      if (appData.itinerary.length < 2) {
+      const itinerary = appData.itinerary || [];
+      if (itinerary.length < 2) {
         alert('Add at least 2 places for navigation.');
         return;
       }
@@ -685,12 +713,14 @@
     }
 
     // ======================================================
-    // 10. CRUD FUNCTIONS
+    // 10. CRUD FUNCTIONS (FIXED)
     // ======================================================
     function addParticipant() {
+      console.log('➕ addParticipant called');
       const input = document.getElementById('participantInput');
       const name = input.value.trim();
       if (!name) { alert('Enter a name.'); return; }
+      if (!appData.participants) appData.participants = [];
       if (appData.participants.includes(name)) { alert('Already exists.'); return; }
       appData.participants.push(name);
       input.value = '';
@@ -698,10 +728,12 @@
       updateSelects();
       updateStats();
       syncToFirebase();
+      console.log('✅ Participant added:', name);
     }
 
     function removeParticipant(name) {
       if (!confirm(`Remove ${name}?`)) return;
+      if (!appData.participants) appData.participants = [];
       appData.participants = appData.participants.filter(p => p !== name);
       renderParticipants();
       updateSelects();
@@ -710,13 +742,18 @@
     }
 
     function addPlace() {
+      console.log('➕ addPlace called');
       const name = document.getElementById('placeName').value.trim();
       const time = document.getElementById('placeTime').value;
       const lat = document.getElementById('placeLat').value.trim();
       const lng = document.getElementById('placeLng').value.trim();
       const desc = document.getElementById('placeDesc').value.trim();
+      console.log('📝 Place data:', { name, time, lat, lng, desc });
+
       if (!name) { alert('Enter place name.'); return; }
       if (!lat || !lng) { alert('Enter Latitude and Longitude (click map or search).'); return; }
+
+      if (!appData.itinerary) appData.itinerary = [];
       appData.itinerary.push({ id: generateId(), name, time, lat, lng, desc });
       document.getElementById('placeName').value = '';
       document.getElementById('placeTime').value = '';
@@ -727,30 +764,39 @@
         tempMarker = null; }
       renderItinerary();
       syncToFirebase();
+      console.log('✅ Place added:', name);
     }
 
     function removeItinerary(idx) {
+      if (!appData.itinerary) appData.itinerary = [];
       appData.itinerary.splice(idx, 1);
       renderItinerary();
       syncToFirebase();
     }
 
     function addExpense() {
+      console.log('➕ addExpense called');
       const desc = document.getElementById('expDesc').value.trim();
       const amount = parseFloat(document.getElementById('expAmount').value);
       const paidBy = document.getElementById('expPaidBy').value;
+      console.log('📝 Expense data:', { desc, amount, paidBy });
+
       if (!desc) { alert('Enter description.'); return; }
       if (isNaN(amount) || amount <= 0) { alert('Enter valid amount.'); return; }
       if (!paidBy) { alert('Select who paid.'); return; }
+
+      if (!appData.expenses) appData.expenses = [];
       appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
       document.getElementById('expDesc').value = '';
       document.getElementById('expAmount').value = '';
       renderExpenses();
       syncToFirebase();
+      console.log('✅ Expense added:', desc);
     }
 
     function removeExpense(idx) {
       if (!confirm('Remove this expense?')) return;
+      if (!appData.expenses) appData.expenses = [];
       appData.expenses.splice(idx, 1);
       renderExpenses();
       syncToFirebase();
@@ -771,17 +817,18 @@
     function calculateSettlements() {
       const container = document.getElementById('settlementTransactions');
       const summary = document.getElementById('settlementSummary');
-      const participants = appData.participants;
+      const participants = appData.participants || [];
+      const expenses = appData.expenses || [];
       if (participants.length === 0) { container.innerHTML = '<div style="color:#ef4444;">Add participants first!</div>'; return; }
-      if (appData.expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
+      if (expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
 
       const totalPaid = {};
       participants.forEach(p => totalPaid[p] = 0);
-      appData.expenses.forEach(exp => {
+      expenses.forEach(exp => {
         const amt = parseFloat(exp.amount);
         if (totalPaid[exp.paidBy] !== undefined) totalPaid[exp.paidBy] += amt;
       });
-      const totalCost = appData.expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+      const totalCost = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
       const share = participants.length > 0 ? totalCost / participants.length : 0;
       const netBalance = {};
       participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
