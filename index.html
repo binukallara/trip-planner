@@ -1,4 +1,4 @@
-<!-- Trip Planner - Full Working with PDF & Receipt Upload -->
+<!-- Trip Planner - Fixed Receipt Display -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -32,7 +32,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <style>
-    /* ========== ALL STYLES ========== */
+    /* All existing styles remain unchanged */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
     #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
     ::-webkit-scrollbar { width: 6px; }
@@ -95,7 +95,9 @@
     .list-item .info .title { font-weight: 600; color: #f1f5f9; }
     .list-item .info .sub { font-size: 13px; color: #94a3b8; }
     .list-item .amount { font-weight: 700; color: #facc15; }
-    .receipt-thumb { max-width: 80px; max-height: 80px; border-radius: 8px; cursor: pointer; border: 1px solid #334155; object-fit: cover; }
+    .receipt-thumb { max-width: 80px; max-height: 80px; border-radius: 8px; border: 1px solid #334155; cursor: pointer; object-fit: cover; }
+    .receipt-link { color: #60a5fa; text-decoration: none; }
+    .receipt-link:hover { text-decoration: underline; }
     .settlement-item { background: #1a2332; border-radius: 12px; padding: 16px 20px; border: 1px solid #2d3a4f; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     .settlement-item .from { color: #f87171; font-weight: 700; }
     .settlement-item .to { color: #34d399; font-weight: 700; }
@@ -466,7 +468,7 @@
       if (mapInstance) updateMapMarkers();
     }
 
-    // ========== RENDER EXPENSES WITH RECEIPT ==========
+    // ========== RENDER EXPENSES WITH FIXED RECEIPT DISPLAY ==========
     function renderExpenses() {
       const c = document.getElementById('expenseList');
       if (!c) return;
@@ -480,19 +482,24 @@
             const isImage = exp.receipt.startsWith('data:image');
             const isPdf = exp.receipt.startsWith('data:application/pdf');
             if (isImage) {
-              receiptHtml = `<img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" onclick="window.open('${exp.receipt}','_blank')" />`;
+              // Use <a> with target="_blank" for images
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" rel="noopener noreferrer" title="View Receipt">
+                                <img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" />
+                             </a>`;
             } else if (isPdf) {
-              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file-pdf"></i> Receipt</a>`;
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" rel="noopener noreferrer" class="receipt-link"><i class="fas fa-file-pdf"></i> Receipt</a>`;
             } else {
-              receiptHtml = `<a href="${exp.receipt}" target="_blank" style="color:#60a5fa;"><i class="fas fa-file"></i> Receipt</a>`;
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" rel="noopener noreferrer" class="receipt-link"><i class="fas fa-file"></i> Receipt</a>`;
             }
+          } else {
+            receiptHtml = `<span style="color:#64748b; font-size:12px;">📎 No receipt</span>`;
           }
           return `
             <div class="list-item" style="border-left-color:#facc15;">
               <div class="info">
                 <div class="title">${exp.desc}</div>
                 <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
-                ${receiptHtml ? `<div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>` : ''}
+                <div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>
               </div>
               <div style="display:flex; align-items:center; gap:12px;">
                 <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
@@ -515,7 +522,7 @@
     }
 
     // ======================================================
-    // 7. MAP FUNCTIONS
+    // 7. MAP FUNCTIONS (unchanged)
     // ======================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
@@ -729,7 +736,6 @@
     // 10. CRUD FUNCTIONS
     // ======================================================
     function addParticipant() {
-      console.log('➕ addParticipant called');
       const input = document.getElementById('participantInput');
       const name = input.value.trim();
       if (!name) { alert('Enter a name.'); return; }
@@ -754,7 +760,6 @@
     }
 
     function addPlace() {
-      console.log('➕ addPlace called');
       const name = document.getElementById('placeName').value.trim();
       const time = document.getElementById('placeTime').value;
       const lat = document.getElementById('placeLat').value.trim();
@@ -784,9 +789,8 @@
       syncToFirebase();
     }
 
-    // ========== ADD EXPENSE WITH RECEIPT UPLOAD ==========
+    // ========== ADD EXPENSE WITH RECEIPT ==========
     function addExpense() {
-      console.log('➕ addExpense called');
       const desc = document.getElementById('expDesc').value.trim();
       const amount = parseFloat(document.getElementById('expAmount').value);
       const paidBy = document.getElementById('expPaidBy').value;
@@ -799,7 +803,6 @@
 
       if (!appData.expenses) appData.expenses = [];
 
-      // If file selected, read as Data URL
       if (file) {
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -919,7 +922,7 @@
     }
 
     // ======================================================
-    // 12. PDF EXPORT (FULLY WORKING)
+    // 12. PDF EXPORT (unchanged)
     // ======================================================
     function exportPDF() {
       const participants = appData.participants || [];
@@ -943,7 +946,6 @@
         return;
       }
 
-      // Calculate settlement data
       const totalPaid = {};
       participants.forEach(p => totalPaid[p] = 0);
       expenses.forEach(exp => {
@@ -955,7 +957,6 @@
       const netBalance = {};
       participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
 
-      // Build HTML content for PDF
       const currency = '₹';
       const expenseRows = expenses.map((exp, idx) => `
         <tr>
@@ -978,7 +979,6 @@
         `;
       }).join('');
 
-      // Settlement transactions
       let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
       let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
       let transactions = [];
@@ -1111,7 +1111,6 @@
         </html>
       `;
 
-      // Create temporary div for PDF generation
       const tempDiv = document.createElement('div');
       tempDiv.style.position = 'fixed';
       tempDiv.style.left = '-9999px';
@@ -1327,7 +1326,6 @@
       document.getElementById('trackLocationBtn').addEventListener('click', function() { startLiveTracking(); });
       document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
 
-      // Expose receipt functions globally
       window.handleReceiptChange = handleReceiptChange;
       window.removeReceipt = removeReceipt;
 
