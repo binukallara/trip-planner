@@ -1,4 +1,4 @@
-<!-- Trip Planner - All Features (Weather API Key Included) -->
+<!-- Trip Planner - All Features + Auto Notifications -->
 <!DOCTYPE html>
 <html lang="ml" data-theme="light">
 <head>
@@ -246,6 +246,12 @@
     .weather-card .desc { font-size:12px; color:var(--text-muted); }
     .weather-card .icon { font-size:32px; }
 
+    /* Notification permission banner */
+    .notif-banner { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .notif-banner .status { font-size:13px; color:var(--text-muted); }
+    .notif-banner .status.enabled { color:var(--success); }
+    .notif-banner .status.disabled { color:var(--danger); }
+
     @media (max-width:900px){ .grid-2 { grid-template-columns:1fr; } }
     @media (max-width:600px){ .app-header { flex-direction:column; align-items:stretch; text-align:center; } .header-actions { justify-content:center; } .input-group { flex-direction:column; align-items:stretch; } .auth-box { padding:30px 20px; } .modal-box { padding:20px; } .nav-tabs { padding:6px 10px; } .nav-tabs button { font-size:12px; padding:6px 12px; } }
   </style>
@@ -312,6 +318,7 @@
     let currentTripPin = null, isSyncing = false, isLocalUpdate = false;
     let mapInstance = null, mapMarkers = [], routingControl = null, userMarker = null, tempMarker = null;
     let watchId = null, isNavigating = false, editExpenseIdx = null, chartInstance = null, currentTheme = 'light';
+    let lastNotificationData = null; // Avoid duplicate notifications
 
     let appData = {
       tripName: 'New Trip', tripDate: new Date().toISOString().split('T')[0],
@@ -320,7 +327,61 @@
     };
 
     // ============================================================
-    // 2. HELPERS & SYNC
+    // 2. NOTIFICATION SYSTEM
+    // ============================================================
+    function requestNotificationPermission() {
+      if (!('Notification' in window)) {
+        updateNotifStatus(false, 'Not supported');
+        return;
+      }
+      if (Notification.permission === 'granted') {
+        updateNotifStatus(true, 'Enabled ✅');
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        updateNotifStatus(false, 'Blocked ❌');
+        return;
+      }
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          updateNotifStatus(true, 'Enabled ✅');
+          showNotification('🔔 Notifications Enabled', 'You will get real-time trip updates.');
+        } else {
+          updateNotifStatus(false, 'Denied ❌');
+        }
+      });
+    }
+
+    function updateNotifStatus(enabled, msg) {
+      const el = document.getElementById('notifStatus');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'status ' + (enabled ? 'enabled' : 'disabled');
+    }
+
+    function showNotification(title, body, tag = null) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      // Avoid duplicate notifications
+      if (tag && lastNotificationData === tag) return;
+      lastNotificationData = tag;
+
+      const options = {
+        body: body || '',
+        icon: 'https://raw.githubusercontent.com/binukallara/trip-planner/refs/heads/main/icon-192.png',
+        vibrate: [200, 100, 200],
+        tag: tag || 'trip-notification',
+        requireInteraction: true,
+        data: { url: window.location.href }
+      };
+      const notification = new Notification(title, options);
+      notification.onclick = function() {
+        window.focus();
+        this.close();
+      };
+    }
+
+    // ============================================================
+    // 3. HELPERS & SYNC
     // ============================================================
     function generateId() { return Date.now() + Math.random().toString(36); }
     function updateSyncStatus(msg, err = false) {
@@ -341,18 +402,47 @@
     function startRealtimeListener(pin) {
       if (isSyncing) return;
       isSyncing = true;
+      let previousData = JSON.stringify(appData);
+
       database.ref('trips/' + pin).on('value', (snapshot) => {
         if (!snapshot.exists()) { localStorage.removeItem('tripPin'); localStorage.removeItem('tripData'); alert('Trip deleted.'); window.location.reload(); return; }
         const remoteData = snapshot.val();
         if (isLocalUpdate) { isLocalUpdate = false; return; }
-        appData = { ...remoteData, participants: remoteData.participants || [], itinerary: remoteData.itinerary || [], expenses: remoteData.expenses || [], packing: remoteData.packing || { personal: [], common: [] }, chatMessages: remoteData.chatMessages || [], budget: remoteData.budget || 0 };
+
+        // Detect changes for notifications
+        const oldData = appData;
+        const newData = { ...remoteData, participants: remoteData.participants || [], itinerary: remoteData.itinerary || [], expenses: remoteData.expenses || [], packing: remoteData.packing || { personal: [], common: [] }, chatMessages: remoteData.chatMessages || [], budget: remoteData.budget || 0 };
+
+        // Check for new expenses
+        if (oldData.expenses && newData.expenses && newData.expenses.length > oldData.expenses.length) {
+          const newExp = newData.expenses[newData.expenses.length - 1];
+          showNotification('💰 New Expense', `${newExp.desc}: ₹${newExp.amount.toFixed(2)} paid by ${newExp.paidBy}`, 'expense-' + newExp.id);
+        }
+        // Check for new chat messages
+        if (oldData.chatMessages && newData.chatMessages && newData.chatMessages.length > oldData.chatMessages.length) {
+          const newMsg = newData.chatMessages[newData.chatMessages.length - 1];
+          if (newMsg.sender !== localStorage.getItem('chatUser') && newMsg.sender !== 'You') {
+            showNotification('💬 New Message', `${newMsg.sender}: ${newMsg.text}`, 'chat-' + newMsg.timestamp);
+          }
+        }
+        // Check for itinerary changes
+        if (oldData.itinerary && newData.itinerary && newData.itinerary.length > oldData.itinerary.length) {
+          const newPlace = newData.itinerary[newData.itinerary.length - 1];
+          showNotification('📍 New Place', `Added: ${newPlace.name}`, 'place-' + newPlace.id);
+        }
+        // Trip name/date update
+        if (oldData.tripName !== newData.tripName || oldData.tripDate !== newData.tripDate) {
+          showNotification('✈️ Trip Updated', `${newData.tripName} - ${newData.tripDate}`, 'trip-update');
+        }
+
+        appData = newData;
         localStorage.setItem('tripData', JSON.stringify(appData));
         reRenderAll();
       }, (error) => console.error('Listener error:', error));
     }
 
     // ============================================================
-    // 3. THEME (Default Light)
+    // 4. THEME (Default Light)
     // ============================================================
     function toggleTheme() {
       currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -372,7 +462,7 @@
     }
 
     // ============================================================
-    // 4. AUTH & SHARING
+    // 5. AUTH & SHARING
     // ============================================================
     function showAuthScreen() { document.getElementById('authScreen').style.display = 'flex';
       document.getElementById('trip-app').style.display = 'none'; }
@@ -457,19 +547,8 @@
         encodeURIComponent(`Trip Planner: Join my trip with PIN: ${pin}\n${url}`); if (navigator.share) { navigator.share({ title: 'Trip Planner',
           text: `Join my trip with PIN: ${pin}\n${url}` }); } else { window.location.href = `sms:?body=${msg}`; } }
 
-    function requestNotificationPermission() {
-      if (!('Notification' in window)) { alert('Notifications not supported.'); return; }
-      if (Notification.permission === 'granted') { alert('✅ Already enabled.'); return; }
-      Notification.requestPermission().then(p => { if (p === 'granted') { alert('✅ Notifications enabled!');
-          showNotification('🔔 Enabled', 'You will get updates.'); } else { alert('❌ Permission denied.'); } });
-    }
-
-    function showNotification(title, body) { if (!('Notification' in window) || Notification.permission !== 'granted') return;
-      new Notification(title, { body: body || '', icon: 'https://raw.githubusercontent.com/binukallara/trip-planner/refs/heads/main/icon-192.png',
-        vibrate: [200, 100, 200] }); }
-
     // ============================================================
-    // 5. RENDER FUNCTIONS
+    // 6. RENDER FUNCTIONS
     // ============================================================
     function reRenderAll() {
       document.getElementById('tripName').value = appData.tripName || '';
@@ -634,7 +713,7 @@
     }
 
     // ============================================================
-    // 6. WEATHER FORECAST (API KEY INCLUDED)
+    // 7. WEATHER FORECAST
     // ============================================================
     function fetchWeather() {
       const container = document.getElementById('weatherContainer');
@@ -648,11 +727,8 @@
         lng = parseFloat(place.lng);
       if (isNaN(lat) || isNaN(lng)) { container.innerHTML =
           '<div style="color:var(--text-muted);">Invalid coordinates.</div>'; return; }
-      
-      // ==== YOUR OPENWEATHERMAP API KEY ====
       const apiKey = '57c483939791f79f7b18c8c801582ab4';
       const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lng}&units=metric&appid=${apiKey}`;
-      
       fetch(url).then(res => res.json()).then(data => {
         if (data.cod !== '200') { container.innerHTML =
             `<div style="color:var(--text-muted);">Weather API error: ${data.message || 'Unknown'}</div>`; return; }
@@ -674,7 +750,7 @@
     }
 
     // ============================================================
-    // 7. MAP FUNCTIONS
+    // 8. MAP FUNCTIONS
     // ============================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
@@ -841,7 +917,7 @@
     }
 
     // ============================================================
-    // 8. CRUD OPERATIONS
+    // 9. CRUD OPERATIONS (with local notifications)
     // ============================================================
     function addParticipant() {
       const input = document.getElementById('participantInput');
@@ -855,6 +931,7 @@
       updateSelects();
       updateStats();
       syncToFirebase();
+      showNotification('👤 New Member', `${name} joined the trip!`, 'member-' + name);
     }
 
     function removeParticipant(name) {
@@ -886,6 +963,7 @@
       renderItinerary();
       syncToFirebase();
       fetchWeather();
+      showNotification('📍 New Place', `Added: ${name} to itinerary`, 'place-' + name);
     }
 
     function removeItinerary(idx) {
@@ -908,12 +986,13 @@
       if (!appData.expenses) appData.expenses = [];
 
       const addExpenseToApp = (receiptData = null) => {
-        appData.expenses.push({ id: generateId(), desc, amount, paidBy, category, receipt: receiptData });
+        const newExp = { id: generateId(), desc, amount, paidBy, category, receipt: receiptData };
+        appData.expenses.push(newExp);
         document.getElementById('expDesc').value = '';
         document.getElementById('expAmount').value = '';
         renderExpenses();
         syncToFirebase();
-        showNotification('💰 New Expense', `${desc}: ₹${amount.toFixed(2)} paid by ${paidBy}`);
+        showNotification('💰 New Expense', `${desc}: ₹${amount.toFixed(2)} paid by ${paidBy}`, 'expense-' + newExp.id);
       };
 
       if (file) {
@@ -975,10 +1054,12 @@
       if (!sender || sender === 'You') { sender = prompt('Enter your name for chat:');
         localStorage.setItem('chatUser', sender); if (!sender) return; }
       if (!appData.chatMessages) appData.chatMessages = [];
-      appData.chatMessages.push({ sender, text, timestamp: Date.now() });
+      const newMsg = { sender, text, timestamp: Date.now() };
+      appData.chatMessages.push(newMsg);
       input.value = '';
       renderChat();
       syncToFirebase();
+      // Don't show notification for own messages (handled by listener)
     }
 
     function addPackingItem() {
@@ -1009,6 +1090,7 @@
       input.value = '';
       updateBudgetUI();
       syncToFirebase();
+      showNotification('💰 Budget Set', `Trip budget: ₹${val.toFixed(2)}`, 'budget-set');
     }
 
     function handleReceiptChange() {
@@ -1027,10 +1109,11 @@
       appData.tripDate = date;
       document.getElementById('tripStatus').innerHTML = `📅 ${date} | ${appData.tripName}`;
       syncToFirebase();
+      showNotification('✈️ Trip Updated', `${name} - ${date}`, 'trip-update');
     }
 
     // ============================================================
-    // 9. SETTLEMENT & PDF
+    // 10. SETTLEMENT & PDF
     // ============================================================
     function calculateSettlements() {
       const container = document.getElementById('settlementTransactions');
@@ -1145,7 +1228,7 @@
     }
 
     // ============================================================
-    // 10. UI BUILD & NAVIGATION
+    // 11. UI BUILD & NAVIGATION
     // ============================================================
     function switchPage(pageId) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1184,6 +1267,14 @@
           </div>
         </div>
 
+        <!-- Notification Status Banner -->
+        <div class="notif-banner">
+          <i class="fas fa-bell"></i>
+          <span>Notifications: </span>
+          <span id="notifStatus" class="status">Checking...</span>
+          <button onclick="requestNotificationPermission()" style="background:var(--primary);border:none;padding:4px 16px;border-radius:20px;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Enable</button>
+        </div>
+
         <div class="nav-tabs">
           <button data-page="dashboard" class="active"><i class="fas fa-home"></i> <span>Dash</span></button>
           <button data-page="itinerary"><i class="fas fa-map-marked-alt"></i> <span>Itinerary</span></button>
@@ -1199,16 +1290,15 @@
           <div class="card"><h3><i class="fas fa-users"></i> Trip Setup</h3><div class="input-group"><input type="text" id="tripName" placeholder="Trip Name" value="${appData.tripName}"><input type="date" id="tripDate" value="${appData.tripDate}"><button id="updateTripBtn"><i class="fas fa-save"></i> Update</button><button id="startNewTripBtn" class="btn-danger"><i class="fas fa-trash-alt"></i> New Trip</button></div><div class="input-group"><input type="text" id="participantInput" placeholder="Add participant name"><button id="addParticipantBtn"><i class="fas fa-user-plus"></i> Add</button></div><div id="participantChips" class="chip-group"></div><div style="margin-top:12px;color:var(--text-muted);font-size:13px;background:var(--bg-input);padding:8px 16px;border-radius:10px;border:1px solid var(--border-color);"><i class="fas fa-sync"></i> <span id="syncStatus">Real-time sync enabled 🔄</span></div>${currentTripPin ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px;">🔑 Active PIN: <strong>${currentTripPin}</strong></div>` : ''}</div>
           <div class="grid-2"><div class="card"><h3><i class="fas fa-route"></i> Quick Stats</h3><div style="display:flex;gap:12px;flex-wrap:wrap;"><div class="stat-box" style="flex:1;"><div class="label">Total Cost</div><div class="value blue" id="dashTotalCost">₹0</div></div><div class="stat-box" style="flex:1;"><div class="label">Members</div><div class="value" id="dashParticipantCount">0</div></div><div class="stat-box" style="flex:1;"><div class="label">Places</div><div class="value" id="dashPlaceCount">0</div></div></div></div><div class="card"><h3><i class="fas fa-map"></i> Live Location</h3><button id="trackLocationBtn" class="btn-success" style="padding:10px 20px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;"><i class="fas fa-location-dot"></i> Track My Location</button><div id="locationStatus" style="margin-top:10px;color:var(--text-muted);font-size:14px;">Click to get your current position.</div></div></div>
           <div class="card"><h3><i class="fas fa-coins"></i> Budget Tracker</h3><div class="input-group"><input type="number" id="budgetInput" placeholder="Set budget (₹)" min="0" step="100"><button id="setBudgetBtn"><i class="fas fa-check"></i> Set Budget</button></div><div id="budgetDisplay"><div style="color:var(--text-muted);">Set a budget to track your spending.</div></div></div>
-          <div class="card"><h3><i class="fas fa-bell"></i> Notifications</h3><button onclick="requestNotificationPermission()" class="btn-purple" style="padding:10px 24px;border:none;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;"><i class="fas fa-bell"></i> Enable Notifications</button><span style="color:var(--text-muted);font-size:13px;margin-left:12px;">Get alerts for new expenses</span></div>
         </div>
 
         <div id="page-itinerary" class="page"><div class="card"><h3><i class="fas fa-plus-circle"></i> Add New Place</h3><div class="input-group"><input type="text" id="placeName" placeholder="Enter place name" style="flex:2;"><button id="searchPlaceBtn" style="background:var(--success);"><i class="fas fa-search"></i> Search</button><span id="searchStatus" style="color:var(--text-muted);font-size:13px;"></span></div><div style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">💡 Click on the map to set coordinates.</div><div class="input-group"><input type="datetime-local" id="placeTime"><input type="text" id="placeLat" placeholder="Latitude"><input type="text" id="placeLng" placeholder="Longitude"></div><div class="input-group"><textarea id="placeDesc" placeholder="Description..." rows="2"></textarea><button id="addPlaceBtn"><i class="fas fa-map-pin"></i> Add</button></div></div><div class="card"><h3><i class="fas fa-list"></i> Itinerary <span id="itineraryCount"></span></h3><div id="itineraryList"></div></div><div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3 style="font-size:16px;font-weight:600;color:var(--text-secondary);margin:0;"><i class="fas fa-map"></i> Navigation</h3><button id="navToggleBtn" class="btn-success" style="padding:8px 20px;border:none;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;"><i class="fas fa-play"></i> Start</button></div><div id="map"></div><div id="navInstructions"><span class="placeholder">Add places to see route.</span></div></div></div>
 
-        <div id="page-expenses" class="page"><div class="card"><h3><i class="fas fa-receipt"></i> Add Expense</h3><div class="input-group"><input type="text" id="expDesc" placeholder="Description"><input type="number" id="expAmount" placeholder="Amount (₹)"><select id="expPaidBy"><option value="">-- Paid By --</option></select><select id="expCategory"><option value="Food">🍔 Food</option><option value="Travel">🚗 Travel</option><option value="Stay">🏨 Stay</option><option value="Shopping">🛍️ Shopping</option><option value="Other">📦 Other</option></select></div><div class="input-group"><input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()"><button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button></div><div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div><div style="color:var(--text-muted);font-size:13px;margin-top:8px;">💰 Shared equally. Optional receipt upload (image/PDF).</div></div><div class="card"><h3><i class="fas fa-list-ul"></i> All Expenses</h3><div id="expenseList"></div></div></div>
+        <div id="page-expenses" class="page"><div class="card"><h3><i class="fas fa-receipt"></i> Add Expense</h3><div class="input-group"><input type="text" id="expDesc" placeholder="Description"><input type="number" id="expAmount" placeholder="Amount (₹)"><select id="expPaidBy"><option value="">-- Paid By --</option></select><select id="expCategory"><option value="Food">🍔 Food</option><option value="Travel">🚗 Travel</option><option value="Stay">🏨 Stay</option><option value="Shopping">🛍️ Shopping</option><option value="Other">📦 Other</option></select></div><div class="input-group"><input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()"><button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button></div><div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div><div style="color:var(--text-muted);font-size:13px;margin-top:8px;">💰 Shared equally. Optional receipt upload.</div></div><div class="card"><h3><i class="fas fa-list-ul"></i> All Expenses</h3><div id="expenseList"></div></div></div>
 
         <div id="page-settlements" class="page"><div class="card"><h3><i class="fas fa-calculator"></i> Settlement</h3><button id="calculateSettleBtn" class="btn-success" style="padding:10px 24px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;margin-bottom:16px;"><i class="fas fa-sync"></i> Calculate</button><div id="settlementSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;"></div><div id="settlementTransactions"></div><button id="downloadPdfBtn" class="btn-danger" style="margin-top:20px;padding:12px 28px;border:none;border-radius:30px;color:#fff;font-weight:700;cursor:pointer;"><i class="fas fa-file-pdf"></i> Download PDF</button></div></div>
 
-        <div id="page-weather" class="page"><div class="card"><h3><i class="fas fa-cloud-sun"></i> Weather Forecast</h3><div id="weatherContainer"><div style="color:var(--text-muted);">Loading weather...</div></div><div style="margin-top:12px;color:var(--text-muted);font-size:13px;">ℹ️ Weather data from OpenWeatherMap.</div></div></div>
+        <div id="page-weather" class="page"><div class="card"><h3><i class="fas fa-cloud-sun"></i> Weather Forecast</h3><div id="weatherContainer"><div style="color:var(--text-muted);">Loading weather...</div></div></div></div>
 
         <div id="page-chart" class="page"><div class="card"><h3><i class="fas fa-chart-pie"></i> Expense Breakdown</h3><div id="chartContainer"><canvas id="expenseChart" style="max-height:250px;max-width:100%;"></canvas></div></div></div>
 
@@ -1265,6 +1355,15 @@
       window.removePacking = removePacking;
       window.addPackingItem = addPackingItem;
 
+      // Update notification status
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') updateNotifStatus(true, 'Enabled ✅');
+        else if (Notification.permission === 'denied') updateNotifStatus(false, 'Blocked ❌');
+        else updateNotifStatus(false, 'Click Enable');
+      } else {
+        updateNotifStatus(false, 'Not supported');
+      }
+
       renderParticipants();
       renderItinerary();
       renderExpenses();
@@ -1281,7 +1380,7 @@
     }
 
     // ============================================================
-    // 11. INITIALIZE
+    // 12. INITIALIZE
     // ============================================================
     loadTheme();
     document.getElementById('newTripBtn').addEventListener('click', createNewTrip);
