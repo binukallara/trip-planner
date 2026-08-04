@@ -1,4 +1,4 @@
-<!-- Trip Planner - All Features (Fixed Nav + Light Theme Default) -->
+<!-- Trip Planner - All Features (Weather API Key Included) -->
 <!DOCTYPE html>
 <html lang="ml" data-theme="light">
 <head>
@@ -363,12 +363,9 @@
     }
     function loadTheme() {
       const saved = localStorage.getItem('theme');
-      if (saved) {
-        currentTheme = saved;
-      } else {
-        currentTheme = 'light';
-        localStorage.setItem('theme', 'light');
-      }
+      if (saved) currentTheme = saved;
+      else { currentTheme = 'light';
+        localStorage.setItem('theme', 'light'); }
       document.documentElement.setAttribute('data-theme', currentTheme);
       const btn = document.getElementById('themeToggleBtn');
       if (btn) btn.innerHTML = currentTheme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
@@ -636,6 +633,9 @@
       });
     }
 
+    // ============================================================
+    // 6. WEATHER FORECAST (API KEY INCLUDED)
+    // ============================================================
     function fetchWeather() {
       const container = document.getElementById('weatherContainer');
       if (!container) return;
@@ -648,9 +648,11 @@
         lng = parseFloat(place.lng);
       if (isNaN(lat) || isNaN(lng)) { container.innerHTML =
           '<div style="color:var(--text-muted);">Invalid coordinates.</div>'; return; }
-      const apiKey = 'YOUR_OPENWEATHER_API_KEY';
-      const url =
-        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lng}&units=metric&appid=${apiKey}`;
+      
+      // ==== YOUR OPENWEATHERMAP API KEY ====
+      const apiKey = '57c483939791f79f7b18c8c801582ab4';
+      const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lng}&units=metric&appid=${apiKey}`;
+      
       fetch(url).then(res => res.json()).then(data => {
         if (data.cod !== '200') { container.innerHTML =
             `<div style="color:var(--text-muted);">Weather API error: ${data.message || 'Unknown'}</div>`; return; }
@@ -672,7 +674,7 @@
     }
 
     // ============================================================
-    // 6. MAP FUNCTIONS
+    // 7. MAP FUNCTIONS
     // ============================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
@@ -839,7 +841,7 @@
     }
 
     // ============================================================
-    // 7. CRUD OPERATIONS
+    // 8. CRUD OPERATIONS
     // ============================================================
     function addParticipant() {
       const input = document.getElementById('participantInput');
@@ -1028,7 +1030,7 @@
     }
 
     // ============================================================
-    // 8. SETTLEMENT & PDF
+    // 9. SETTLEMENT & PDF
     // ============================================================
     function calculateSettlements() {
       const container = document.getElementById('settlementTransactions');
@@ -1143,7 +1145,7 @@
     }
 
     // ============================================================
-    // 9. UI BUILD & NAVIGATION
+    // 10. UI BUILD & NAVIGATION
     // ============================================================
     function switchPage(pageId) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1206,7 +1208,7 @@
 
         <div id="page-settlements" class="page"><div class="card"><h3><i class="fas fa-calculator"></i> Settlement</h3><button id="calculateSettleBtn" class="btn-success" style="padding:10px 24px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;margin-bottom:16px;"><i class="fas fa-sync"></i> Calculate</button><div id="settlementSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;"></div><div id="settlementTransactions"></div><button id="downloadPdfBtn" class="btn-danger" style="margin-top:20px;padding:12px 28px;border:none;border-radius:30px;color:#fff;font-weight:700;cursor:pointer;"><i class="fas fa-file-pdf"></i> Download PDF</button></div></div>
 
-        <div id="page-weather" class="page"><div class="card"><h3><i class="fas fa-cloud-sun"></i> Weather Forecast</h3><div id="weatherContainer"><div style="color:var(--text-muted);">Loading weather...</div></div><div style="margin-top:12px;color:var(--text-muted);font-size:13px;">ℹ️ Requires OpenWeatherMap API key.</div></div></div>
+        <div id="page-weather" class="page"><div class="card"><h3><i class="fas fa-cloud-sun"></i> Weather Forecast</h3><div id="weatherContainer"><div style="color:var(--text-muted);">Loading weather...</div></div><div style="margin-top:12px;color:var(--text-muted);font-size:13px;">ℹ️ Weather data from OpenWeatherMap.</div></div></div>
 
         <div id="page-chart" class="page"><div class="card"><h3><i class="fas fa-chart-pie"></i> Expense Breakdown</h3><div id="chartContainer"><canvas id="expenseChart" style="max-height:250px;max-width:100%;"></canvas></div></div></div>
 
@@ -1279,7 +1281,7 @@
     }
 
     // ============================================================
-    // 10. INITIALIZE
+    // 11. INITIALIZE
     // ============================================================
     loadTheme();
     document.getElementById('newTripBtn').addEventListener('click', createNewTrip);
