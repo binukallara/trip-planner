@@ -1,4 +1,5 @@
-<!-- Trip Planner - Fixed Receipt Display -->
+
+<!-- Trip Planner - All Features (Dark/Light Theme, Weather, Chat, Edit Expense, Budget, Chart, Packing, Share) -->
 <!DOCTYPE html>
 <html lang="ml">
 <head>
@@ -28,153 +29,287 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js">
   </script>
 
+  <!-- Chart.js for Pie Chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js">
+  </script>
+
   <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <style>
-    /* All existing styles remain unchanged */
+    /* ========== CSS VARIABLES FOR THEMES ========== */
+    :root {
+      --bg-primary: #0b0e14;
+      --bg-secondary: #171f2a;
+      --bg-card: #171f2a;
+      --bg-input: #0b1119;
+      --bg-hover: #1e2838;
+      --bg-chip: #1e293b;
+      --text-primary: #eef2f6;
+      --text-secondary: #cbd5e1;
+      --text-muted: #94a3b8;
+      --border-color: #273340;
+      --border-light: #2a364a;
+      --shadow-color: rgba(0,0,0,0.3);
+      --card-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      --input-bg: #0b1119;
+      --input-border: #2a364a;
+      --input-focus: #3b82f6;
+      --scrollbar-track: #1a1f29;
+      --scrollbar-thumb: #3b82f6;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #facc15;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --purple: #8b5cf6;
+      --map-bg: #0b1119;
+      --leaflet-zoom-bg: #1e293b;
+      --leaflet-zoom-hover: #2d3a4f;
+      --leaflet-zoom-color: #e2e8f0;
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f1f5f9;
+      --bg-secondary: #ffffff;
+      --bg-card: #ffffff;
+      --bg-input: #f8fafc;
+      --bg-hover: #e2e8f0;
+      --bg-chip: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-secondary: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #d1d5db;
+      --border-light: #e2e8f0;
+      --shadow-color: rgba(0,0,0,0.1);
+      --card-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      --input-bg: #ffffff;
+      --input-border: #d1d5db;
+      --input-focus: #3b82f6;
+      --scrollbar-track: #e2e8f0;
+      --scrollbar-thumb: #3b82f6;
+      --map-bg: #f1f5f9;
+      --leaflet-zoom-bg: #ffffff;
+      --leaflet-zoom-hover: #f1f5f9;
+      --leaflet-zoom-color: #0f172a;
+    }
+
+    /* ========== RESET & BASE ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
-    #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; background: #0b0e14; color: #eef2f6; }
+    body { background: var(--bg-primary); color: var(--text-primary); transition: background 0.3s, color 0.3s; }
+    #trip-app { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #1a1f29; }
-    ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 8px; }
-    .app-header { background: #111820; border-bottom: 1px solid #1f2937; padding: 16px 24px; border-radius: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-    .app-header h1 { font-size: 22px; font-weight: 700; color: #fff; }
-    .app-header h1 i { color: #3b82f6; margin-right: 10px; }
-    .app-header .badge { background: #1e293b; padding: 4px 16px; border-radius: 30px; font-size: 13px; color: #94a3b8; border: 1px solid #2d3a4f; }
-    .nav-tabs { display: flex; gap: 8px; background: #131a24; padding: 8px; border-radius: 16px; margin-bottom: 24px; flex-wrap: wrap; border: 1px solid #273340; }
-    .nav-tabs button { background: transparent; border: none; padding: 10px 20px; border-radius: 12px; color: #94a3b8; font-weight: 600; font-size: 14px; cursor: pointer; transition: 0.2s; flex: 1; min-width: 80px; }
-    .nav-tabs button:hover { background: #1e2838; color: #fff; }
-    .nav-tabs button.active { background: #3b82f6; color: #fff; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
-    .card { background: #171f2a; border: 1px solid #273340; border-radius: 20px; padding: 24px; margin-bottom: 24px; }
-    .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 20px; color: #cbd5e1; }
-    .card h3 i { margin-right: 10px; color: #3b82f6; }
+    ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+    ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 8px; }
+
+    /* ========== HEADER & NAV ========== */
+    .app-header { background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); padding: 16px 24px; border-radius: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .app-header h1 { font-size: 22px; font-weight: 700; color: var(--text-primary); }
+    .app-header h1 i { color: var(--primary); margin-right: 10px; }
+    .app-header .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .app-header .badge { background: var(--bg-chip); padding: 4px 16px; border-radius: 30px; font-size: 13px; color: var(--text-muted); border: 1px solid var(--border-color); }
+    .theme-toggle { background: var(--bg-input); border: 1px solid var(--input-border); border-radius: 30px; padding: 6px 14px; color: var(--text-primary); cursor: pointer; font-size: 16px; transition: 0.2s; }
+    .theme-toggle:hover { background: var(--bg-hover); }
+
+    .nav-tabs { display: flex; gap: 8px; background: var(--bg-secondary); padding: 8px; border-radius: 16px; margin-bottom: 24px; flex-wrap: wrap; border: 1px solid var(--border-color); overflow-x: auto; }
+    .nav-tabs button { background: transparent; border: none; padding: 10px 20px; border-radius: 12px; color: var(--text-muted); font-weight: 600; font-size: 14px; cursor: pointer; transition: 0.2s; flex: 1; min-width: 70px; white-space: nowrap; }
+    .nav-tabs button:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-tabs button.active { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+
+    /* ========== CARDS & FORMS ========== */
+    .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 20px; padding: 24px; margin-bottom: 24px; box-shadow: var(--card-shadow); transition: background 0.3s, border 0.3s; }
+    .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 20px; color: var(--text-secondary); }
+    .card h3 i { margin-right: 10px; color: var(--primary); }
+
     .input-group { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
     .input-group input, .input-group select, .input-group textarea {
-      background: #0b1119; border: 1px solid #2a364a; border-radius: 12px;
-      padding: 10px 16px; color: #fff; font-size: 14px; flex: 1; min-width: 150px;
+      background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 12px;
+      padding: 10px 16px; color: var(--text-primary); font-size: 14px; flex: 1; min-width: 150px;
       transition: 0.2s; outline: none;
     }
     .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
-      border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+      border-color: var(--input-focus); box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
     }
+    .input-group input::placeholder, .input-group textarea::placeholder { color: var(--text-muted); }
     .input-group button {
-      background: #3b82f6; border: none; padding: 10px 24px; border-radius: 30px;
+      background: var(--primary); border: none; padding: 10px 24px; border-radius: 30px;
       font-weight: 600; color: #fff; cursor: pointer; transition: 0.2s; font-size: 14px;
       white-space: nowrap; display: flex; align-items: center; gap: 8px;
     }
-    .input-group button:hover { background: #2563eb; transform: scale(1.02); }
-    .btn-danger { background: #ef4444 !important; }
+    .input-group button:hover { background: var(--primary-hover); transform: scale(1.02); }
+    .input-group button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-danger { background: var(--danger) !important; }
     .btn-danger:hover { background: #dc2626 !important; }
-    .btn-success { background: #10b981 !important; }
+    .btn-success { background: var(--success) !important; }
     .btn-success:hover { background: #059669 !important; }
+    .btn-purple { background: var(--purple) !important; }
+    .btn-purple:hover { background: #7c3aed !important; }
+
     .chip-group { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-    .chip { background: #1e293b; padding: 5px 14px; border-radius: 30px; font-size: 13px; display: flex; align-items: center; gap: 8px; border: 1px solid #334155; }
-    .chip .remove-chip { cursor: pointer; color: #94a3b8; font-size: 12px; }
-    .chip .remove-chip:hover { color: #ef4444; }
-    #map { height: 400px; width: 100%; border-radius: 16px; border: 1px solid #273340; background: #0b1119; z-index: 1; }
+    .chip { background: var(--bg-chip); padding: 5px 14px; border-radius: 30px; font-size: 13px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-color); color: var(--text-primary); }
+    .chip .remove-chip { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+    .chip .remove-chip:hover { color: var(--danger); }
+
+    /* ========== MAP ========== */
+    #map { height: 400px; width: 100%; border-radius: 16px; border: 1px solid var(--border-color); background: var(--map-bg); z-index: 1; }
     .leaflet-routing-container { display: none !important; }
-    .leaflet-control-zoom a { background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important; }
-    .leaflet-control-zoom a:hover { background: #2d3a4f !important; }
+    .leaflet-control-zoom a { background: var(--leaflet-zoom-bg) !important; color: var(--leaflet-zoom-color) !important; border-color: var(--border-color) !important; }
+    .leaflet-control-zoom a:hover { background: var(--leaflet-zoom-hover) !important; }
+
+    /* ========== NAV INSTRUCTIONS ========== */
     #navInstructions {
-      background: #1a2332;
+      background: var(--bg-secondary);
       padding: 16px 20px;
       border-radius: 12px;
-      border: 1px solid #2d3a4f;
+      border: 1px solid var(--border-color);
       margin-top: 12px;
-      color: #e2e8f0;
+      color: var(--text-primary);
       max-height: 200px;
       overflow-y: auto;
       font-weight: 400;
       line-height: 1.6;
       min-height: 60px;
     }
-    #navInstructions .placeholder { color: #64748b; font-size: 16px; font-weight: 400; text-align: center; display: block; width: 100%; }
-    .list-item { background: #111a24; border-radius: 12px; padding: 14px 18px; border-left: 4px solid #3b82f6; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-    .list-item .info { display: flex; flex-direction: column; gap: 2px; }
-    .list-item .info .title { font-weight: 600; color: #f1f5f9; }
-    .list-item .info .sub { font-size: 13px; color: #94a3b8; }
-    .list-item .amount { font-weight: 700; color: #facc15; }
-    .receipt-thumb { max-width: 80px; max-height: 80px; border-radius: 8px; border: 1px solid #334155; cursor: pointer; object-fit: cover; }
-    .receipt-link { color: #60a5fa; text-decoration: none; }
+    #navInstructions .placeholder { color: var(--text-muted); font-size: 16px; font-weight: 400; text-align: center; display: block; width: 100%; }
+    .instruction-step { display: flex; flex-wrap: wrap; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 16px; gap: 4px 10px; }
+    .instruction-step:last-child { border-bottom: none; }
+    .step-number { color: var(--text-muted); font-weight: 600; min-width: 30px; font-size: 14px; }
+    .step-text { flex: 1; }
+    .step-distance { color: var(--primary); font-weight: 500; font-size: 13px; background: var(--bg-input); padding: 1px 10px; border-radius: 20px; white-space: nowrap; }
+
+    /* ========== LIST ITEMS ========== */
+    .list-item { background: var(--bg-secondary); border-radius: 12px; padding: 14px 18px; border-left: 4px solid var(--primary); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .list-item .info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .list-item .info .title { font-weight: 600; color: var(--text-primary); }
+    .list-item .info .sub { font-size: 13px; color: var(--text-muted); }
+    .list-item .amount { font-weight: 700; color: var(--warning); }
+    .receipt-thumb { max-width: 80px; max-height: 80px; border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; object-fit: cover; }
+    .receipt-link { color: var(--primary); text-decoration: none; }
     .receipt-link:hover { text-decoration: underline; }
-    .settlement-item { background: #1a2332; border-radius: 12px; padding: 16px 20px; border: 1px solid #2d3a4f; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-    .settlement-item .from { color: #f87171; font-weight: 700; }
-    .settlement-item .to { color: #34d399; font-weight: 700; }
-    .settlement-item .s-amount { color: #facc15; font-weight: 700; font-size: 18px; }
+
+    .settlement-item { background: var(--bg-secondary); border-radius: 12px; padding: 16px 20px; border: 1px solid var(--border-color); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .settlement-item .from { color: var(--danger); font-weight: 700; }
+    .settlement-item .to { color: var(--success); font-weight: 700; }
+    .settlement-item .s-amount { color: var(--warning); font-weight: 700; font-size: 18px; }
+
+    /* ========== STATS & GRID ========== */
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-    .stat-box { background: #111a24; padding: 16px; border-radius: 14px; border: 1px solid #273340; text-align: center; }
-    .stat-box .label { color: #94a3b8; font-size: 13px; }
-    .stat-box .value { font-size: 26px; font-weight: 700; color: #fff; margin-top: 4px; }
-    .stat-box .green { color: #34d399; }
-    .stat-box .red { color: #f87171; }
-    .stat-box .blue { color: #60a5fa; }
-    .page { display: none; animation: fadeIn 0.3s ease; }
-    .page.active { display: block; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .stat-box { background: var(--bg-secondary); padding: 16px; border-radius: 14px; border: 1px solid var(--border-color); text-align: center; }
+    .stat-box .label { color: var(--text-muted); font-size: 13px; }
+    .stat-box .value { font-size: 26px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+    .stat-box .green { color: var(--success); }
+    .stat-box .red { color: var(--danger); }
+    .stat-box .blue { color: var(--primary); }
+    .stat-box .warning { color: var(--warning); }
+
+    /* ========== PROGRESS BAR ========== */
+    .progress-container { background: var(--bg-secondary); border-radius: 30px; height: 20px; overflow: hidden; border: 1px solid var(--border-color); margin: 8px 0; }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, var(--success), var(--warning), var(--danger)); transition: width 0.5s ease; border-radius: 30px; }
+    .progress-text { text-align: center; font-size: 14px; font-weight: 600; margin-top: 4px; color: var(--text-muted); }
+
+    /* ========== PIE CHART ========== */
+    #expenseChart { max-height: 250px; max-width: 100%; }
+
+    /* ========== CHAT ========== */
+    .chat-container { max-height: 300px; overflow-y: auto; padding: 12px; background: var(--bg-input); border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 12px; }
+    .chat-msg { padding: 8px 14px; border-radius: 16px; margin-bottom: 8px; max-width: 80%; word-wrap: break-word; }
+    .chat-msg.me { background: var(--primary); color: #fff; margin-left: auto; }
+    .chat-msg.other { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); }
+    .chat-msg .sender { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 2px; }
+    .chat-msg .time { font-size: 10px; color: var(--text-muted); margin-left: 8px; }
+
+    /* ========== PACKING CHECKLIST ========== */
+    .packing-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--bg-secondary); border-radius: 10px; margin-bottom: 6px; border: 1px solid var(--border-color); }
+    .packing-item input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary); cursor: pointer; }
+    .packing-item .item-text { flex: 1; font-size: 14px; }
+    .packing-item .item-text.done { text-decoration: line-through; color: var(--text-muted); }
+    .packing-item .item-category { font-size: 11px; padding: 2px 10px; border-radius: 20px; background: var(--bg-chip); color: var(--text-muted); }
+
+    /* ========== MODAL ========== */
+    .modal-overlay {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); z-index: 99999;
+      justify-content: center; align-items: center;
+      animation: fadeIn 0.3s ease;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-box {
+      background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 24px; padding: 30px; max-width: 500px; width: 90%;
+      color: var(--text-primary); box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal-box h2 { font-size: 20px; margin-bottom: 16px; }
+    .modal-box h2 i { color: var(--primary); margin-right: 10px; }
+    .modal-box .input-group { flex-direction: column; align-items: stretch; }
+    .modal-box .input-group input, .modal-box .input-group select { width: 100%; }
+    .modal-box .btn-group { display: flex; gap: 12px; margin-top: 16px; }
+    .modal-box .btn-group button { flex: 1; padding: 12px; border: none; border-radius: 30px; font-weight: 600; cursor: pointer; }
+    .modal-box .btn-group .cancel-btn { background: var(--bg-chip); color: var(--text-primary); }
+    .modal-box .btn-group .cancel-btn:hover { background: var(--bg-hover); }
+    .modal-box .btn-group .save-btn { background: var(--primary); color: #fff; }
+    .modal-box .btn-group .save-btn:hover { background: var(--primary-hover); }
+
+    /* ========== AUTH ========== */
     .auth-overlay {
       display: flex;
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.85);
-      z-index: 99999;
-      justify-content: center;
-      align-items: center;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); z-index: 99999;
+      justify-content: center; align-items: center;
       animation: fadeIn 0.4s ease;
     }
     .auth-box {
-      background: #171f2a;
-      border: 1px solid #2d3a4f;
-      border-radius: 24px;
-      padding: 40px 30px;
-      max-width: 420px;
-      width: 90%;
-      text-align: center;
-      color: #e2e8f0;
+      background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 24px; padding: 40px 30px; max-width: 420px; width: 90%;
+      text-align: center; color: var(--text-primary);
       box-shadow: 0 30px 80px rgba(0,0,0,0.9);
     }
-    .auth-box h2 { font-size: 24px; margin-bottom: 8px; color: #fff; }
-    .auth-box h2 i { color: #3b82f6; margin-right: 10px; }
-    .auth-box p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
+    .auth-box h2 { font-size: 24px; margin-bottom: 8px; }
+    .auth-box h2 i { color: var(--primary); margin-right: 10px; }
+    .auth-box p { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
     .auth-box .input-group { justify-content: center; }
     .auth-box .input-group input {
-      text-align: center;
-      font-size: 24px;
-      letter-spacing: 8px;
-      max-width: 180px;
-      padding: 12px;
+      text-align: center; font-size: 24px; letter-spacing: 8px; max-width: 180px; padding: 12px;
     }
-    .auth-box .btn-group {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 12px;
-    }
-    .auth-box .btn-group button {
-      padding: 12px 28px;
-      border: none;
-      border-radius: 30px;
-      font-weight: 600;
-      font-size: 15px;
-      cursor: pointer;
-      transition: 0.2s;
-      color: #fff;
-      flex: 1;
-      min-width: 120px;
-    }
-    .auth-box .btn-group .primary-btn { background: #3b82f6; }
-    .auth-box .btn-group .primary-btn:hover { background: #2563eb; }
-    .auth-box .btn-group .secondary-btn { background: #10b981; }
+    .auth-box .btn-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+    .auth-box .btn-group button { padding: 12px 28px; border: none; border-radius: 30px; font-weight: 600; font-size: 15px; cursor: pointer; transition: 0.2s; color: #fff; flex: 1; min-width: 120px; }
+    .auth-box .btn-group .primary-btn { background: var(--primary); }
+    .auth-box .btn-group .primary-btn:hover { background: var(--primary-hover); }
+    .auth-box .btn-group .secondary-btn { background: var(--success); }
     .auth-box .btn-group .secondary-btn:hover { background: #059669; }
-    .auth-box .error-msg { color: #ef4444; font-size: 14px; margin-top: 12px; min-height: 20px; }
-    .sync-status { color: #94a3b8; font-size: 13px; margin-top: 6px; }
-    .sync-status.success { color: #34d399; }
-    .sync-status.error { color: #ef4444; }
-    @media (max-width: 700px) { 
-      .grid-2 { grid-template-columns: 1fr; } 
+    .auth-box .error-msg { color: var(--danger); font-size: 14px; margin-top: 12px; min-height: 20px; }
+
+    .sync-status { color: var(--text-muted); font-size: 13px; margin-top: 6px; }
+    .sync-status.success { color: var(--success); }
+    .sync-status.error { color: var(--danger); }
+
+    .page { display: none; animation: fadeIn 0.3s ease; }
+    .page.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ========== WEATHER ========== */
+    .weather-cards { display: flex; gap: 12px; overflow-x: auto; padding: 8px 0; }
+    .weather-card { background: var(--bg-secondary); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); min-width: 120px; text-align: center; flex-shrink: 0; }
+    .weather-card .day { font-weight: 600; font-size: 14px; }
+    .weather-card .temp { font-size: 20px; font-weight: 700; }
+    .weather-card .desc { font-size: 12px; color: var(--text-muted); }
+    .weather-card .icon { font-size: 32px; }
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 900px) { 
+      .grid-2 { grid-template-columns: 1fr; }
+      .grid-3 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .grid-3 { grid-template-columns: 1fr; }
+      .app-header { flex-direction: column; align-items: stretch; text-align: center; }
+      .app-header .header-actions { justify-content: center; }
       .input-group { flex-direction: column; align-items: stretch; }
       .auth-box { padding: 30px 20px; }
+      .modal-box { padding: 20px; }
     }
   </style>
 </head>
@@ -198,6 +333,29 @@
 
   <!-- ========== MAIN APP ========== -->
   <div id="trip-app" style="display:none;"></div>
+
+  <!-- ========== EDIT EXPENSE MODAL ========== -->
+  <div id="editModal" class="modal-overlay">
+    <div class="modal-box">
+      <h2><i class="fas fa-edit"></i> Edit Expense</h2>
+      <div class="input-group">
+        <input type="text" id="editExpDesc" placeholder="Description">
+        <input type="number" id="editExpAmount" placeholder="Amount (₹)">
+        <select id="editExpPaidBy"><option value="">-- Paid By --</option></select>
+        <select id="editExpCategory">
+          <option value="Food">🍔 Food</option>
+          <option value="Travel">🚗 Travel</option>
+          <option value="Stay">🏨 Stay</option>
+          <option value="Shopping">🛍️ Shopping</option>
+          <option value="Other">📦 Other</option>
+        </select>
+      </div>
+      <div class="btn-group">
+        <button class="cancel-btn" onclick="closeEditModal()">Cancel</button>
+        <button class="save-btn" onclick="saveEditExpense()"><i class="fas fa-save"></i> Save</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     // ======================================================
@@ -228,6 +386,9 @@
     let tempMarker = null;
     let watchId = null;
     let isNavigating = false;
+    let editExpenseIdx = null;
+    let chartInstance = null;
+    let currentTheme = 'dark';
 
     // ======================================================
     // 2. APP DATA
@@ -238,6 +399,8 @@
       participants: [],
       itinerary: [],
       expenses: [],
+      packing: { personal: [], common: [] },
+      budget: 0,
       createdAt: Date.now()
     };
 
@@ -255,22 +418,38 @@
     }
 
     // ======================================================
-    // 4. FIREBASE SYNC
+    // 4. THEME TOGGLE
+    // ======================================================
+    function toggleTheme() {
+      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      localStorage.setItem('theme', currentTheme);
+      const btn = document.getElementById('themeToggleBtn');
+      if (btn) btn.innerHTML = currentTheme === 'dark' ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+    }
+
+    function loadTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved) {
+        currentTheme = saved;
+        document.documentElement.setAttribute('data-theme', saved);
+      }
+    }
+
+    // ======================================================
+    // 5. FIREBASE SYNC
     // ======================================================
     function syncToFirebase() {
       if (!currentTripPin) {
         updateSyncStatus('❌ No active PIN', true);
-        alert('No active trip. Please join or create a trip first.');
         return;
       }
       isLocalUpdate = true;
       if (!appData.createdAt) appData.createdAt = firebase.database.ServerValue.TIMESTAMP;
-      console.log('📤 Syncing data to Firebase for PIN:', currentTripPin);
       database.ref('trips/' + currentTripPin).set(appData)
         .then(() => {
           isLocalUpdate = false;
           updateSyncStatus('✅ Synced');
-          console.log('✅ Sync successful');
           setTimeout(() => {
             const el = document.getElementById('syncStatus');
             if (el) el.textContent = 'Real-time sync enabled 🔄';
@@ -280,14 +459,12 @@
           isLocalUpdate = false;
           console.error('❌ Sync error:', err);
           updateSyncStatus('❌ Sync failed: ' + err.message, true);
-          alert('❌ Failed to save: ' + err.message);
         });
     }
 
     function startRealtimeListener(pin) {
       if (isSyncing) return;
       isSyncing = true;
-      console.log('👂 Starting real-time listener for PIN:', pin);
       database.ref('trips/' + pin).on('value', (snapshot) => {
         if (!snapshot.exists()) {
           localStorage.removeItem('tripPin');
@@ -298,12 +475,13 @@
         }
         const remoteData = snapshot.val();
         if (isLocalUpdate) { isLocalUpdate = false; return; }
-        console.log('📥 Remote data updated');
         appData = {
           ...remoteData,
           participants: remoteData.participants || [],
           itinerary: remoteData.itinerary || [],
-          expenses: remoteData.expenses || []
+          expenses: remoteData.expenses || [],
+          packing: remoteData.packing || { personal: [], common: [] },
+          budget: remoteData.budget || 0
         };
         localStorage.setItem('tripData', JSON.stringify(appData));
         reRenderAll();
@@ -313,7 +491,7 @@
     }
 
     // ======================================================
-    // 5. TRIP CREATE / JOIN
+    // 6. TRIP CREATE / JOIN
     // ======================================================
     function showAuthScreen() {
       document.getElementById('authScreen').style.display = 'flex';
@@ -336,9 +514,10 @@
         participants: [],
         itinerary: [],
         expenses: [],
+        packing: { personal: [], common: [] },
+        budget: 0,
         createdAt: firebase.database.ServerValue.TIMESTAMP
       };
-      console.log('🆕 Creating new trip with PIN:', pin);
       database.ref('trips/' + pin).set(newTripData)
         .then(() => {
           currentTripPin = pin;
@@ -358,13 +537,11 @@
 
     function joinTrip() {
       clearError();
-      const pinInput = document.getElementById('pinInput');
-      const pin = pinInput.value.trim();
+      const pin = document.getElementById('pinInput').value.trim();
       if (!pin || pin.length !== 4 || isNaN(pin)) {
         setError('Enter a valid 4-digit PIN.');
         return;
       }
-      console.log('🔑 Joining trip with PIN:', pin);
       database.ref('trips/' + pin).once('value')
         .then(snapshot => {
           if (!snapshot.exists()) {
@@ -375,6 +552,8 @@
           data.participants = data.participants || [];
           data.itinerary = data.itinerary || [];
           data.expenses = data.expenses || [];
+          data.packing = data.packing || { personal: [], common: [] };
+          data.budget = data.budget || 0;
           currentTripPin = pin;
           appData = data;
           localStorage.setItem('tripData', JSON.stringify(appData));
@@ -395,16 +574,21 @@
       modal.style.cssText = `
         display:flex; position:fixed; top:0; left:0; width:100%; height:100%;
         background:rgba(0,0,0,0.7); z-index:99999; justify-content:center; align-items:center;
+        animation:fadeIn 0.3s ease;
       `;
       modal.innerHTML = `
         <div class="auth-box" style="max-width:450px;">
-          <h2><i class="fas fa-share-alt" style="color:#8b5cf6;"></i> Share Your Trip</h2>
-          <p style="color:#94a3b8; font-size:14px; margin-bottom:20px;">Share this PIN with your team.</p>
-          <div style="background:#0b1119; padding:16px; border-radius:16px; border:1px solid #2a364a; margin-bottom:20px;">
-            <div style="color:#94a3b8; font-size:13px;">🔑 Your Trip PIN</div>
-            <div style="font-size:42px; font-weight:700; color:#facc15; letter-spacing:12px;">${pin}</div>
+          <h2><i class="fas fa-share-alt" style="color:var(--purple);"></i> Share Your Trip</h2>
+          <p style="color:var(--text-muted); font-size:14px; margin-bottom:20px;">Share this PIN with your team.</p>
+          <div style="background:var(--bg-input); padding:16px; border-radius:16px; border:1px solid var(--border-color); margin-bottom:20px;">
+            <div style="color:var(--text-muted); font-size:13px;">🔑 Your Trip PIN</div>
+            <div style="font-size:42px; font-weight:700; color:var(--warning); letter-spacing:12px;">${pin}</div>
           </div>
-          <button onclick="this.closest('#shareModal').remove()" style="padding:12px 28px; border:none; border-radius:30px; font-weight:600; color:#fff; background:#3b82f6; cursor:pointer;">Got it</button>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
+            <button onclick="shareViaWhatsApp('${pin}')" style="padding:10px 20px; border:none; border-radius:30px; font-weight:600; color:#fff; background:#25D366; cursor:pointer;"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+            <button onclick="shareViaSMS('${pin}')" style="padding:10px 20px; border:none; border-radius:30px; font-weight:600; color:#fff; background:#34B7F1; cursor:pointer;"><i class="fas fa-sms"></i> SMS</button>
+            <button onclick="this.closest('#shareModal').remove()" style="padding:10px 20px; border:none; border-radius:30px; font-weight:600; color:#fff; background:var(--primary); cursor:pointer;">Got it</button>
+          </div>
         </div>
       `;
       document.body.appendChild(modal);
@@ -412,17 +596,39 @@
     }
 
     // ======================================================
-    // 6. RENDER FUNCTIONS
+    // 7. SHARING FUNCTIONS (SMS / WhatsApp)
+    // ======================================================
+    function shareViaWhatsApp(pin) {
+      const url = window.location.href;
+      const msg = encodeURIComponent(`✈️ Trip Planner\nJoin my trip with PIN: ${pin}\nLink: ${url}`);
+      window.open(`https://wa.me/?text=${msg}`, '_blank');
+    }
+
+    function shareViaSMS(pin) {
+      const url = window.location.href;
+      const msg = encodeURIComponent(`Trip Planner: Join my trip with PIN: ${pin}\n${url}`);
+      if (navigator.share) {
+        navigator.share({ title: 'Trip Planner', text: `Join my trip with PIN: ${pin}\n${url}` });
+      } else {
+        window.location.href = `sms:?body=${msg}`;
+      }
+    }
+
+    // ======================================================
+    // 8. RENDER FUNCTIONS
     // ======================================================
     function reRenderAll() {
-      console.log('🔄 Re-rendering UI');
       document.getElementById('tripName').value = appData.tripName || '';
       document.getElementById('tripDate').value = appData.tripDate || '';
       renderParticipants();
       renderItinerary();
       renderExpenses();
+      renderPacking();
+      renderChat();
       updateStats();
       updateSelects();
+      updateBudgetUI();
+      updateChart();
       if (mapInstance) updateMapMarkers();
     }
 
@@ -443,6 +649,11 @@
       const participants = appData.participants || [];
       const opts = participants.map(p => `<option value="${p}">${p}</option>`).join('');
       paidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
+      // Also update edit modal selects
+      const editPaidBy = document.getElementById('editExpPaidBy');
+      if (editPaidBy) {
+        editPaidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
+      }
     }
 
     function renderItinerary() {
@@ -450,7 +661,7 @@
       if (!c) return;
       const itinerary = appData.itinerary || [];
       if (itinerary.length === 0) {
-        c.innerHTML = '<div style="color:#64748b;padding:16px;">No places added yet.</div>';
+        c.innerHTML = '<div style="color:var(--text-muted);padding:16px;">No places added yet.</div>';
       } else {
         c.innerHTML = itinerary.map((item, idx) => `
           <div class="list-item" style="border-left-color:#10b981;">
@@ -468,41 +679,35 @@
       if (mapInstance) updateMapMarkers();
     }
 
-    // ========== RENDER EXPENSES WITH FIXED RECEIPT DISPLAY ==========
     function renderExpenses() {
       const c = document.getElementById('expenseList');
       if (!c) return;
       const expenses = appData.expenses || [];
       if (expenses.length === 0) {
-        c.innerHTML = '<div style="color:#64748b;padding:16px;">No expenses recorded.</div>';
+        c.innerHTML = '<div style="color:var(--text-muted);padding:16px;">No expenses recorded.</div>';
       } else {
         c.innerHTML = expenses.map((exp, idx) => {
           let receiptHtml = '';
           if (exp.receipt) {
             const isImage = exp.receipt.startsWith('data:image');
-            const isPdf = exp.receipt.startsWith('data:application/pdf');
             if (isImage) {
-              // Use <a> with target="_blank" for images
-              receiptHtml = `<a href="${exp.receipt}" target="_blank" rel="noopener noreferrer" title="View Receipt">
-                                <img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" />
-                             </a>`;
-            } else if (isPdf) {
-              receiptHtml = `<a href="${exp.receipt}" target="_blank" rel="noopener noreferrer" class="receipt-link"><i class="fas fa-file-pdf"></i> Receipt</a>`;
+              receiptHtml = `<a href="${exp.receipt}" target="_blank" rel="noopener noreferrer"><img src="${exp.receipt}" class="receipt-thumb" alt="Receipt" /></a>`;
             } else {
               receiptHtml = `<a href="${exp.receipt}" target="_blank" rel="noopener noreferrer" class="receipt-link"><i class="fas fa-file"></i> Receipt</a>`;
             }
-          } else {
-            receiptHtml = `<span style="color:#64748b; font-size:12px;">📎 No receipt</span>`;
           }
+          const category = exp.category || 'Other';
+          const catEmoji = { Food: '🍔', Travel: '🚗', Stay: '🏨', Shopping: '🛍️', Other: '📦' };
           return `
-            <div class="list-item" style="border-left-color:#facc15;">
+            <div class="list-item" style="border-left-color:var(--warning);">
               <div class="info">
-                <div class="title">${exp.desc}</div>
+                <div class="title">${exp.desc} <span style="font-size:12px;color:var(--text-muted);">${catEmoji[category] || '📦'} ${category}</span></div>
                 <div class="sub">Paid by <strong>${exp.paidBy}</strong></div>
-                <div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>
+                ${receiptHtml ? `<div class="sub" style="margin-top:4px;">📎 ${receiptHtml}</div>` : ''}
               </div>
               <div style="display:flex; align-items:center; gap:12px;">
                 <div class="amount">₹${parseFloat(exp.amount).toFixed(2)}</div>
+                <button class="btn-success" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" onclick="openEditModal(${idx})"><i class="fas fa-edit"></i></button>
                 <button class="btn-danger" style="border:none;padding:4px 10px;border-radius:20px;color:#fff;cursor:pointer;" data-action="removeExpense" data-idx="${idx}"><i class="fas fa-trash"></i></button>
               </div>
             </div>
@@ -510,6 +715,8 @@
         }).join('');
       }
       updateStats();
+      updateChart();
+      updateBudgetUI();
     }
 
     function updateStats() {
@@ -519,15 +726,334 @@
       const total = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
       document.getElementById('dashTotalCost').innerHTML = '₹' + total.toFixed(2);
       document.getElementById('tripStatus').innerHTML = participants.length > 0 ? `👥 ${participants.length} members` : '⚡ Add members';
+      // Update budget progress
+      updateBudgetUI();
     }
 
     // ======================================================
-    // 7. MAP FUNCTIONS (unchanged)
+    // 9. BUDGET UI
+    // ======================================================
+    function updateBudgetUI() {
+      const budget = appData.budget || 0;
+      const total = (appData.expenses || []).reduce((s, e) => s + parseFloat(e.amount), 0);
+      const percent = budget > 0 ? Math.min((total / budget) * 100, 100) : 0;
+      const remaining = budget - total;
+
+      const el = document.getElementById('budgetDisplay');
+      if (!el) return;
+      el.innerHTML = `
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+          <span>💰 Budget: ₹${budget.toFixed(2)}</span>
+          <span>Spent: ₹${total.toFixed(2)}</span>
+          <span>Remaining: ₹${remaining.toFixed(2)}</span>
+        </div>
+        <div class="progress-container">
+          <div class="progress-bar" style="width:${percent}%;"></div>
+        </div>
+        <div class="progress-text">${percent.toFixed(1)}% used</div>
+      `;
+    }
+
+    // ======================================================
+    // 10. PIE CHART (Chart.js)
+    // ======================================================
+    function updateChart() {
+      const canvas = document.getElementById('expenseChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      // Destroy old chart
+      if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+      }
+
+      const expenses = appData.expenses || [];
+      if (expenses.length === 0) {
+        document.getElementById('chartContainer').innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center;">Add expenses to see chart.</div>';
+        return;
+      }
+
+      // Group by category
+      const categories = { Food: 0, Travel: 0, Stay: 0, Shopping: 0, Other: 0 };
+      expenses.forEach(exp => {
+        const cat = exp.category || 'Other';
+        if (categories[cat] !== undefined) categories[cat] += parseFloat(exp.amount);
+        else categories['Other'] += parseFloat(exp.amount);
+      });
+
+      const labels = Object.keys(categories).filter(k => categories[k] > 0);
+      const data = labels.map(k => categories[k]);
+      const colors = ['#3b82f6', '#10b981', '#facc15', '#8b5cf6', '#ef4444'];
+      const emojis = { Food: '🍔', Travel: '🚗', Stay: '🏨', Shopping: '🛍️', Other: '📦' };
+
+      const container = document.getElementById('chartContainer');
+      container.innerHTML = '<canvas id="expenseChart" style="max-height:250px;max-width:100%;"></canvas>';
+
+      const newCanvas = document.getElementById('expenseChart');
+      const newCtx = newCanvas.getContext('2d');
+
+      chartInstance = new Chart(newCtx, {
+        type: 'doughnut',
+        data: {
+          labels: labels.map(l => `${emojis[l] || '📦'} ${l}`),
+          datasets: [{
+            data: data,
+            backgroundColor: colors.slice(0, labels.length),
+            borderColor: 'var(--bg-card)',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: 'var(--text-primary)', font: { size: 12 } }
+            }
+          }
+        }
+      });
+    }
+
+    // ======================================================
+    // 11. WEATHER FORECAST
+    // ======================================================
+    function fetchWeather() {
+      const container = document.getElementById('weatherContainer');
+      container.innerHTML = '<div style="color:var(--text-muted);">Loading weather...</div>';
+
+      const places = appData.itinerary || [];
+      if (places.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-muted);">Add places to see weather forecast.</div>';
+        return;
+      }
+
+      // Use the first place for weather
+      const place = places[0];
+      const lat = parseFloat(place.lat);
+      const lng = parseFloat(place.lng);
+      if (isNaN(lat) || isNaN(lng)) {
+        container.innerHTML = '<div style="color:var(--text-muted);">Invalid coordinates for weather.</div>';
+        return;
+      }
+
+      // OpenWeatherMap API (free tier) - using demo key, user should replace
+      const apiKey = 'YOUR_OPENWEATHER_API_KEY'; // Replace with actual key
+      const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lng}&units=metric&appid=${apiKey}`;
+
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          if (data.cod !== '200') {
+            container.innerHTML = `<div style="color:var(--text-muted);">Weather API error: ${data.message || 'Unknown'}</div>`;
+            return;
+          }
+
+          // Get daily forecasts (every 8th entry = 24 hours)
+          const daily = data.list.filter((item, idx) => idx % 8 === 0).slice(0, 5);
+          let html = '<div class="weather-cards">';
+          const days = ['Today', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+          daily.forEach((item, idx) => {
+            const date = new Date(item.dt * 1000);
+            const dayName = idx === 0 ? 'Today' : days[date.getDay()];
+            const temp = Math.round(item.main.temp);
+            const desc = item.weather[0].description;
+            const icon = item.weather[0].icon;
+            const iconUrl = `https://openweathermap.org/img/wn/${icon}@2x.png`;
+            html += `
+              <div class="weather-card">
+                <div class="day">${dayName}</div>
+                <div><img src="${iconUrl}" alt="${desc}" style="width:50px;height:50px;" /></div>
+                <div class="temp">${temp}°C</div>
+                <div class="desc">${desc}</div>
+              </div>
+            `;
+          });
+          html += '</div>';
+          container.innerHTML = html;
+        })
+        .catch(err => {
+          console.error('Weather error:', err);
+          container.innerHTML = '<div style="color:var(--text-muted);">Failed to fetch weather. Check API key.</div>';
+        });
+    }
+
+    // ======================================================
+    // 12. CHAT
+    // ======================================================
+    function renderChat() {
+      const container = document.getElementById('chatMessages');
+      if (!container) return;
+      const messages = appData.chatMessages || [];
+      if (messages.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">No messages yet. Start the conversation!</div>';
+        return;
+      }
+      const sender = localStorage.getItem('chatUser') || 'You';
+      container.innerHTML = messages.map(msg => `
+        <div class="chat-msg ${msg.sender === sender ? 'me' : 'other'}">
+          <div class="sender">${msg.sender === sender ? 'You' : msg.sender}</div>
+          ${msg.text}
+          <span class="time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+        </div>
+      `).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function sendChatMessage() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      const sender = localStorage.getItem('chatUser') || 'You';
+      if (sender === 'You') {
+        const name = prompt('Enter your name for chat:');
+        if (name) localStorage.setItem('chatUser', name);
+        else return;
+      }
+      const messages = appData.chatMessages || [];
+      messages.push({ sender: localStorage.getItem('chatUser') || 'You', text, timestamp: Date.now() });
+      appData.chatMessages = messages;
+      input.value = '';
+      renderChat();
+      syncToFirebase();
+    }
+
+    // ======================================================
+    // 13. PACKING CHECKLIST
+    // ======================================================
+    function renderPacking() {
+      const personal = appData.packing?.personal || [];
+      const common = appData.packing?.common || [];
+
+      const container = document.getElementById('packingList');
+      if (!container) return;
+
+      const renderItems = (items, type) => items.map((item, idx) => `
+        <div class="packing-item">
+          <input type="checkbox" ${item.done ? 'checked' : ''} onchange="togglePacking('${type}', ${idx})" />
+          <span class="item-text ${item.done ? 'done' : ''}">${item.text}</span>
+          <span class="item-category">${type === 'personal' ? '👤 Personal' : '👥 Common'}</span>
+          <button class="btn-danger" style="border:none;padding:2px 10px;border-radius:20px;color:#fff;cursor:pointer;font-size:12px;" onclick="removePacking('${type}', ${idx})"><i class="fas fa-times"></i></button>
+        </div>
+      `).join('');
+
+      container.innerHTML = `
+        <div style="margin-bottom:12px;">
+          <strong>👤 Personal Items</strong>
+          <div>${renderItems(personal, 'personal') || '<div style="color:var(--text-muted);padding:8px;">No personal items.</div>'}</div>
+        </div>
+        <div>
+          <strong>👥 Common Items</strong>
+          <div>${renderItems(common, 'common') || '<div style="color:var(--text-muted);padding:8px;">No common items.</div>'}</div>
+        </div>
+      `;
+    }
+
+    function addPackingItem() {
+      const input = document.getElementById('packingInput');
+      const text = input.value.trim();
+      const type = document.getElementById('packingType').value;
+      if (!text) return;
+      if (!appData.packing) appData.packing = { personal: [], common: [] };
+      appData.packing[type].push({ text, done: false });
+      input.value = '';
+      renderPacking();
+      syncToFirebase();
+    }
+
+    function togglePacking(type, idx) {
+      if (!appData.packing) return;
+      appData.packing[type][idx].done = !appData.packing[type][idx].done;
+      renderPacking();
+      syncToFirebase();
+    }
+
+    function removePacking(type, idx) {
+      if (!appData.packing) return;
+      appData.packing[type].splice(idx, 1);
+      renderPacking();
+      syncToFirebase();
+    }
+
+    // ======================================================
+    // 14. EDIT EXPENSE
+    // ======================================================
+    function openEditModal(idx) {
+      const exp = appData.expenses[idx];
+      if (!exp) return;
+      editExpenseIdx = idx;
+      document.getElementById('editExpDesc').value = exp.desc || '';
+      document.getElementById('editExpAmount').value = exp.amount || '';
+      document.getElementById('editExpPaidBy').value = exp.paidBy || '';
+      document.getElementById('editExpCategory').value = exp.category || 'Other';
+      document.getElementById('editModal').classList.add('active');
+    }
+
+    function closeEditModal() {
+      document.getElementById('editModal').classList.remove('active');
+      editExpenseIdx = null;
+    }
+
+    function saveEditExpense() {
+      if (editExpenseIdx === null) return;
+      const desc = document.getElementById('editExpDesc').value.trim();
+      const amount = parseFloat(document.getElementById('editExpAmount').value);
+      const paidBy = document.getElementById('editExpPaidBy').value;
+      const category = document.getElementById('editExpCategory').value;
+
+      if (!desc) { alert('Enter description.'); return; }
+      if (isNaN(amount) || amount <= 0) { alert('Enter valid amount.'); return; }
+      if (!paidBy) { alert('Select who paid.'); return; }
+
+      appData.expenses[editExpenseIdx] = {
+        ...appData.expenses[editExpenseIdx],
+        desc, amount, paidBy, category
+      };
+      closeEditModal();
+      renderExpenses();
+      syncToFirebase();
+    }
+
+    // ======================================================
+    // 15. PUSH NOTIFICATIONS (Browser)
+    // ======================================================
+    function requestNotificationPermission() {
+      if (!('Notification' in window)) {
+        alert('Notifications not supported in this browser.');
+        return;
+      }
+      if (Notification.permission === 'granted') {
+        alert('✅ Notifications already enabled.');
+        return;
+      }
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          alert('✅ Notifications enabled!');
+          showNotification('🔔 Notifications enabled', 'You will get updates about your trip.');
+        } else {
+          alert('❌ Notification permission denied.');
+        }
+      });
+    }
+
+    function showNotification(title, body) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      new Notification(title, {
+        body: body || '',
+        icon: 'https://raw.githubusercontent.com/binukallara/trip-planner/refs/heads/main/icon-192.png',
+        vibrate: [200, 100, 200]
+      });
+    }
+
+    // ======================================================
+    // 16. MAP FUNCTIONS
     // ======================================================
     function initMap() {
       const defaultLoc = [10.089, 77.059];
       if (typeof L === 'undefined') {
-        document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:#ef4444;">⚠️ Leaflet library not loaded.</div>';
+        document.getElementById('map').innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);">⚠️ Leaflet library not loaded.</div>';
         return;
       }
       if (mapInstance) { mapInstance.remove();
@@ -615,13 +1141,13 @@
             instructions.forEach((step, idx) => {
               let text = step.instruction || step.text || step.name || '';
               let dist = step.distance || 0;
-              let distStr = dist > 0 ? (dist >= 1000 ? (dist/1000).toFixed(1)+' km' : Math.round(dist)+' m') : '';
-              html += `<div class="instruction-step"><span class="step-number">${idx+1}.</span><span class="step-text">${text}</span>${distStr ? `<span class="step-distance">${distStr}</span>` : ''}</div>`;
+              let distStr = dist > 0 ? (dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m') : '';
+              html += `<div class="instruction-step"><span class="step-number">${idx + 1}.</span><span class="step-text">${text}</span>${distStr ? `<span class="step-distance">${distStr}</span>` : ''}</div>`;
             });
             document.getElementById('navInstructions').innerHTML = html || '<span class="placeholder">No instructions available.</span>';
           });
           routingControl.on('routingerror', function(e) {
-            document.getElementById('navInstructions').innerHTML = '<span style="color:#ef4444;">❌ Could not calculate route.</span>';
+            document.getElementById('navInstructions').innerHTML = '<span style="color:var(--danger);">❌ Could not calculate route.</span>';
           });
           setTimeout(() => { if (routingControl) routingControl.route(); }, 500);
         } catch (e) {
@@ -635,7 +1161,7 @@
     }
 
     // ======================================================
-    // 8. NAVIGATION FUNCTIONS
+    // 17. NAVIGATION
     // ======================================================
     function startLiveTracking() {
       if (!navigator.geolocation) { document.getElementById('locationStatus').innerHTML = '❌ GPS not supported.'; return; }
@@ -644,7 +1170,8 @@
       document.getElementById('locationStatus').innerHTML = '📍 GPS Active...';
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          const lat = pos.coords.latitude,
+            lng = pos.coords.longitude;
           document.getElementById('locationStatus').innerHTML = `📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
           if (mapInstance) {
             if (userMarker) { userMarker.setLatLng([lat, lng]); } else {
@@ -699,7 +1226,7 @@
     }
 
     // ======================================================
-    // 9. SEARCH PLACE
+    // 18. SEARCH PLACE
     // ======================================================
     function searchPlace() {
       const query = document.getElementById('placeName').value.trim();
@@ -733,7 +1260,7 @@
     }
 
     // ======================================================
-    // 10. CRUD FUNCTIONS
+    // 19. CRUD FUNCTIONS
     // ======================================================
     function addParticipant() {
       const input = document.getElementById('participantInput');
@@ -780,6 +1307,8 @@
         tempMarker = null; }
       renderItinerary();
       syncToFirebase();
+      // Refresh weather if available
+      fetchWeather();
     }
 
     function removeItinerary(idx) {
@@ -787,13 +1316,14 @@
       appData.itinerary.splice(idx, 1);
       renderItinerary();
       syncToFirebase();
+      fetchWeather();
     }
 
-    // ========== ADD EXPENSE WITH RECEIPT ==========
     function addExpense() {
       const desc = document.getElementById('expDesc').value.trim();
       const amount = parseFloat(document.getElementById('expAmount').value);
       const paidBy = document.getElementById('expPaidBy').value;
+      const category = document.getElementById('expCategory').value || 'Other';
       const fileInput = document.getElementById('expReceipt');
       const file = fileInput.files[0];
 
@@ -808,20 +1338,23 @@
         reader.onload = function(e) {
           const dataUrl = e.target.result;
           if (dataUrl.length > 2 * 1024 * 1024) {
-            alert('File too large (max 2MB). Please choose a smaller file.');
+            alert('File too large (max 2MB).');
             return;
           }
-          appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: dataUrl });
+          appData.expenses.push({ id: generateId(), desc, amount, paidBy, category, receipt: dataUrl });
           fileInput.value = '';
           document.getElementById('removeReceiptBtn').style.display = 'none';
           renderExpenses();
           syncToFirebase();
+          // Send notification
+          showNotification('💰 New Expense', `${desc}: ₹${amount.toFixed(2)} paid by ${paidBy}`);
         };
         reader.readAsDataURL(file);
       } else {
-        appData.expenses.push({ id: generateId(), desc, amount, paidBy, receipt: null });
+        appData.expenses.push({ id: generateId(), desc, amount, paidBy, category, receipt: null });
         renderExpenses();
         syncToFirebase();
+        showNotification('💰 New Expense', `${desc}: ₹${amount.toFixed(2)} paid by ${paidBy}`);
       }
 
       document.getElementById('expDesc').value = '';
@@ -860,16 +1393,26 @@
       syncToFirebase();
     }
 
+    function setBudget() {
+      const input = document.getElementById('budgetInput');
+      const val = parseFloat(input.value);
+      if (isNaN(val) || val < 0) { alert('Enter a valid budget amount.'); return; }
+      appData.budget = val;
+      input.value = '';
+      updateBudgetUI();
+      syncToFirebase();
+    }
+
     // ======================================================
-    // 11. SETTLEMENT
+    // 20. SETTLEMENT
     // ======================================================
     function calculateSettlements() {
       const container = document.getElementById('settlementTransactions');
       const summary = document.getElementById('settlementSummary');
       const participants = appData.participants || [];
       const expenses = appData.expenses || [];
-      if (participants.length === 0) { container.innerHTML = '<div style="color:#ef4444;">Add participants first!</div>'; return; }
-      if (expenses.length === 0) { container.innerHTML = '<div style="color:#94a3b8;">No expenses to settle.</div>'; return; }
+      if (participants.length === 0) { container.innerHTML = '<div style="color:var(--danger);">Add participants first!</div>'; return; }
+      if (expenses.length === 0) { container.innerHTML = '<div style="color:var(--text-muted);">No expenses to settle.</div>'; return; }
 
       const totalPaid = {};
       participants.forEach(p => totalPaid[p] = 0);
@@ -910,11 +1453,11 @@
       }
 
       if (transactions.length === 0) {
-        container.innerHTML = '<div style="color:#34d399;font-weight:600;">✅ All settled!</div>';
+        container.innerHTML = '<div style="color:var(--success);font-weight:600;">✅ All settled!</div>';
       } else {
         container.innerHTML = transactions.map(t => `
           <div class="settlement-item">
-            <div><span class="from">${t.from}</span> <i class="fas fa-arrow-right" style="color:#94a3b8;margin:0 12px;"></i> <span class="to">${t.to}</span></div>
+            <div><span class="from">${t.from}</span> <i class="fas fa-arrow-right" style="color:var(--text-muted);margin:0 12px;"></i> <span class="to">${t.to}</span></div>
             <div class="s-amount">₹${t.amount.toFixed(2)}</div>
           </div>
         `).join('');
@@ -922,29 +1465,17 @@
     }
 
     // ======================================================
-    // 12. PDF EXPORT (unchanged)
+    // 21. PDF EXPORT
     // ======================================================
     function exportPDF() {
       const participants = appData.participants || [];
       const expenses = appData.expenses || [];
 
-      if (participants.length === 0) {
-        alert('Add participants first!');
-        return;
-      }
-      if (expenses.length === 0) {
-        alert('No expenses to report.');
-        return;
-      }
+      if (participants.length === 0) { alert('Add participants first!'); return; }
+      if (expenses.length === 0) { alert('No expenses to report.'); return; }
 
-      if (typeof html2canvas === 'undefined') {
-        alert('html2canvas library not loaded. Please refresh and try again.');
-        return;
-      }
-      if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
-        alert('jsPDF library not loaded. Please refresh and try again.');
-        return;
-      }
+      if (typeof html2canvas === 'undefined') { alert('html2canvas not loaded.'); return; }
+      if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') { alert('jsPDF not loaded.'); return; }
 
       const totalPaid = {};
       participants.forEach(p => totalPaid[p] = 0);
@@ -959,24 +1490,19 @@
 
       const currency = '₹';
       const expenseRows = expenses.map((exp, idx) => `
-        <tr>
-          <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:center;">${idx+1}</td>
-          <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.desc}</td>
-          <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${parseFloat(exp.amount).toFixed(2)}</td>
-          <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.paidBy}</td>
-        </tr>
+        <tr><td style="padding:6px 10px; border:1px solid #d1d5db; text-align:center;">${idx+1}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.desc}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${parseFloat(exp.amount).toFixed(2)}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.paidBy}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db;">${exp.category || 'Other'}</td></tr>
       `).join('');
 
       const balanceRows = participants.map(p => {
         const bal = netBalance[p];
         const color = bal >= 0 ? '#16a34a' : '#dc2626';
-        return `
-          <tr>
-            <td style="padding:6px 10px; border:1px solid #d1d5db;">${p}</td>
-            <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${totalPaid[p].toFixed(2)}</td>
-            <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right; color:${color}; font-weight:600;">${bal >= 0 ? '+' : ''}${currency}${bal.toFixed(2)}</td>
-          </tr>
-        `;
+        return `<tr><td style="padding:6px 10px; border:1px solid #d1d5db;">${p}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${totalPaid[p].toFixed(2)}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right; color:${color}; font-weight:600;">${bal >= 0 ? '+' : ''}${currency}${bal.toFixed(2)}</td></tr>`;
       }).join('');
 
       let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
@@ -994,122 +1520,37 @@
         if (payer.amount < 0.01) i++;
         if (receiver.amount < 0.01) j++;
       }
-
       const txnRows = transactions.map(t => `
-        <tr>
-          <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.from}</td>
-          <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.to}</td>
-          <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${t.amount.toFixed(2)}</td>
-        </tr>
+        <tr><td style="padding:6px 10px; border:1px solid #d1d5db;">${t.from}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db;">${t.to}</td>
+        <td style="padding:6px 10px; border:1px solid #d1d5db; text-align:right;">${currency}${t.amount.toFixed(2)}</td></tr>
       `).join('');
 
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Settlement Report</title>
-          <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 30px; background: #ffffff; color: #1e293b; }
-            .container { max-width: 700px; margin: 0 auto; }
-            h1 { text-align: center; color: #1e293b; font-size: 22px; }
-            .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px; }
-            .section { margin: 20px 0; }
-            .section-title { font-size: 16px; font-weight: 600; border-bottom: 2px solid #3b82f6; padding-bottom: 4px; margin-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; font-size: 13px; }
-            th { background: #f1f5f9; padding: 6px 10px; border: 1px solid #d1d5db; text-align: left; font-weight: 600; }
-            td { padding: 6px 10px; border: 1px solid #d1d5db; }
-            .summary-box { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 12px 0; }
-            .summary-item { background: #f8fafc; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; flex: 1; min-width: 100px; }
-            .summary-item .label { font-size: 12px; color: #64748b; }
-            .summary-item .value { font-size: 20px; font-weight: 700; color: #0f172a; }
-            .participant-badge { display: inline-block; background: #e2e8f0; padding: 2px 12px; border-radius: 20px; font-size: 13px; margin: 2px; }
-            .footer { text-align: center; color: #94a3b8; font-size: 11px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>📊 Trip Settlement Report</h1>
-            <div class="subtitle">${appData.tripName} — ${appData.tripDate}</div>
-
-            <div class="section">
-              <div class="section-title">👥 Participants</div>
-              <div style="display:flex; flex-wrap:wrap; gap:4px;">
-                ${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}
-              </div>
-            </div>
-
-            <div class="section">
-              <div class="section-title">💰 Shared Expenses</div>
-              <table>
-                <thead>
-                  <tr>
-                    <th style="width:40px; text-align:center;">#</th>
-                    <th>Description</th>
-                    <th style="text-align:right;">Amount</th>
-                    <th>Paid By</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${expenseRows || '<tr><td colspan="4" style="text-align:center;">No expenses recorded.</td></tr>'}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="section">
-              <div class="section-title">📈 Summary</div>
-              <div class="summary-box">
-                <div class="summary-item">
-                  <div class="label">Total Cost</div>
-                  <div class="value">${currency}${totalCost.toFixed(2)}</div>
-                </div>
-                <div class="summary-item">
-                  <div class="label">Per Person Share</div>
-                  <div class="value">${currency}${share.toFixed(2)}</div>
-                </div>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Participant</th>
-                    <th style="text-align:right;">Total Paid</th>
-                    <th style="text-align:right;">Net Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${balanceRows}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="section">
-              <div class="section-title">🔄 Settlement Transactions</div>
-              ${transactions.length > 0 ? `
-                <table>
-                  <thead>
-                    <tr>
-                      <th>From</th>
-                      <th>To</th>
-                      <th style="text-align:right;">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${txnRows}
-                  </tbody>
-                </table>
-                <div style="margin-top:6px; font-size:13px; color:#475569;">Total transactions: ${transactions.length}</div>
-              ` : `
-                <p style="color:#16a34a; font-weight:600;">✅ All settled!</p>
-              `}
-            </div>
-
-            <div class="footer">
-              This settlement was calculated by Trip Planner. All amounts are rounded to 2 decimal places.
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
+      const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Settlement Report</title><style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 30px; background: #ffffff; color: #1e293b; }
+        .container { max-width: 700px; margin: 0 auto; }
+        h1 { text-align: center; font-size: 22px; }
+        .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px; }
+        .section { margin: 20px 0; }
+        .section-title { font-size: 16px; font-weight: 600; border-bottom: 2px solid #3b82f6; padding-bottom: 4px; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #f1f5f9; padding: 6px 10px; border: 1px solid #d1d5db; text-align: left; font-weight: 600; }
+        td { padding: 6px 10px; border: 1px solid #d1d5db; }
+        .summary-box { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 12px 0; }
+        .summary-item { background: #f8fafc; padding: 10px 20px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; flex: 1; min-width: 100px; }
+        .summary-item .label { font-size: 12px; color: #64748b; }
+        .summary-item .value { font-size: 20px; font-weight: 700; color: #0f172a; }
+        .participant-badge { display: inline-block; background: #e2e8f0; padding: 2px 12px; border-radius: 20px; font-size: 13px; margin: 2px; }
+        .footer { text-align: center; color: #94a3b8; font-size: 11px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+      </style></head><body>
+        <div class="container"><h1>📊 Trip Settlement Report</h1><div class="subtitle">${appData.tripName} — ${appData.tripDate}</div>
+        <div class="section"><div class="section-title">👥 Participants</div><div style="display:flex; flex-wrap:wrap; gap:4px;">${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}</div></div>
+        <div class="section"><div class="section-title">💰 Shared Expenses</div><table><thead><tr><th style="width:40px;text-align:center;">#</th><th>Description</th><th style="text-align:right;">Amount</th><th>Paid By</th><th>Category</th></tr></thead><tbody>${expenseRows || '<tr><td colspan="5" style="text-align:center;">No expenses recorded.</td></tr>'}</tbody></table></div>
+        <div class="section"><div class="section-title">📈 Summary</div><div class="summary-box"><div class="summary-item"><div class="label">Total Cost</div><div class="value">${currency}${totalCost.toFixed(2)}</div></div><div class="summary-item"><div class="label">Per Person Share</div><div class="value">${currency}${share.toFixed(2)}</div></div></div>
+        <table><thead><tr><th>Participant</th><th style="text-align:right;">Total Paid</th><th style="text-align:right;">Net Balance</th></tr></thead><tbody>${balanceRows}</tbody></table></div>
+        <div class="section"><div class="section-title">🔄 Settlement Transactions</div>${transactions.length > 0 ? `<table><thead><tr><th>From</th><th>To</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${txnRows}</tbody></table><div style="margin-top:6px; font-size:13px; color:#475569;">Total transactions: ${transactions.length}</div>` : `<p style="color:#16a34a; font-weight:600;">✅ All settled!</p>`}</div>
+        <div class="footer">This settlement was calculated by Trip Planner. All amounts are rounded to 2 decimal places.</div></div>
+      </body></html>`;
 
       const tempDiv = document.createElement('div');
       tempDiv.style.position = 'fixed';
@@ -1122,29 +1563,14 @@
       tempDiv.innerHTML = htmlContent;
       document.body.appendChild(tempDiv);
 
-      html2canvas(tempDiv, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        logging: false,
-        width: 750,
-        height: tempDiv.scrollHeight,
-      }).then(canvas => {
+      html2canvas(tempDiv, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, width: 750, height: tempDiv
+          .scrollHeight }).then(canvas => {
         let jsPDFConstructor = null;
-        if (window.jspdf && typeof window.jspdf.jsPDF === 'function') {
-          jsPDFConstructor = window.jspdf.jsPDF;
-        } else if (window.jsPDF && typeof window.jsPDF === 'function') {
-          jsPDFConstructor = window.jsPDF;
-        } else if (typeof jsPDF === 'function') {
-          jsPDFConstructor = jsPDF;
-        }
-
-        if (!jsPDFConstructor) {
-          document.body.removeChild(tempDiv);
-          alert('jsPDF library not found.');
-          return;
-        }
-
+        if (window.jspdf && typeof window.jspdf.jsPDF === 'function') jsPDFConstructor = window.jspdf.jsPDF;
+        else if (window.jsPDF && typeof window.jsPDF === 'function') jsPDFConstructor = window.jsPDF;
+        else if (typeof jsPDF === 'function') jsPDFConstructor = jsPDF;
+        if (!jsPDFConstructor) { document.body.removeChild(tempDiv);
+          alert('jsPDF not found.'); return; }
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
         const doc = new jsPDFConstructor('p', 'mm', 'a4');
         const pdfWidth = 210;
@@ -1152,15 +1578,13 @@
         doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
         doc.save(`Settlement_${appData.tripName || 'Trip'}.pdf`);
         document.body.removeChild(tempDiv);
-      }).catch(err => {
-        console.error(err);
+      }).catch(err => { console.error(err);
         document.body.removeChild(tempDiv);
-        alert('PDF generation failed: ' + err.message);
-      });
+        alert('PDF generation failed: ' + err.message); });
     }
 
     // ======================================================
-    // 13. NAVIGATION TABS
+    // 22. NAVIGATION TABS
     // ======================================================
     function switchPage(pageId) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1169,6 +1593,8 @@
       document.querySelectorAll('.nav-tabs button').forEach(b => { if (b.dataset.page === pageId) b.classList.add('active'); });
       if (pageId === 'itinerary' && mapInstance) { setTimeout(() => mapInstance.invalidateSize(), 100); }
       if (pageId === 'settlements') calculateSettlements();
+      if (pageId === 'weather') fetchWeather();
+      if (pageId === 'chart') setTimeout(updateChart, 200);
     }
 
     function startNewTrip() {
@@ -1179,7 +1605,7 @@
       localStorage.removeItem('tripPin');
       currentTripPin = null;
       appData = { tripName: 'New Trip', tripDate: new Date().toISOString().split('T')[0], participants: [], itinerary: [],
-        expenses: [], createdAt: Date.now() };
+        expenses: [], packing: { personal: [], common: [] }, budget: 0, createdAt: Date.now() };
       document.getElementById('trip-app').innerHTML = '';
       document.getElementById('trip-app').style.display = 'none';
       document.getElementById('authScreen').style.display = 'flex';
@@ -1187,14 +1613,17 @@
     }
 
     // ======================================================
-    // 14. BUILD UI
+    // 23. BUILD UI
     // ======================================================
     function buildUI() {
       const app = document.getElementById('trip-app');
       app.innerHTML = `
         <div class="app-header">
           <h1><i class="fas fa-plane-departure"></i> Trip Planner</h1>
-          <div class="badge" id="tripStatus">📅 ${appData.tripDate} | ${appData.tripName}</div>
+          <div class="header-actions">
+            <div class="badge" id="tripStatus">📅 ${appData.tripDate} | ${appData.tripName}</div>
+            <button id="themeToggleBtn" class="theme-toggle" onclick="toggleTheme()"><i class="fas ${currentTheme === 'dark' ? 'fa-moon' : 'fa-sun'}"></i></button>
+          </div>
         </div>
 
         <div class="nav-tabs">
@@ -1202,8 +1631,13 @@
           <button data-page="itinerary"><i class="fas fa-map-marked-alt"></i> Itinerary</button>
           <button data-page="expenses"><i class="fas fa-wallet"></i> Expenses</button>
           <button data-page="settlements"><i class="fas fa-hand-holding-usd"></i> Settle</button>
+          <button data-page="weather"><i class="fas fa-cloud-sun"></i> Weather</button>
+          <button data-page="chart"><i class="fas fa-chart-pie"></i> Chart</button>
+          <button data-page="chat"><i class="fas fa-comments"></i> Chat</button>
+          <button data-page="packing"><i class="fas fa-suitcase"></i> Packing</button>
         </div>
 
+        <!-- ===== DASHBOARD ===== -->
         <div id="page-dashboard" class="page active">
           <div class="card">
             <h3><i class="fas fa-users"></i> Trip Setup</h3>
@@ -1218,10 +1652,10 @@
               <button id="addParticipantBtn"><i class="fas fa-user-plus"></i> Add</button>
             </div>
             <div id="participantChips" class="chip-group"></div>
-            <div style="margin-top:12px; color:#60a5fa; font-size:13px; background:#0b1119; padding:8px 16px; border-radius:10px; border:1px solid #1e293b;">
+            <div style="margin-top:12px; color:var(--text-muted); font-size:13px; background:var(--bg-input); padding:8px 16px; border-radius:10px; border:1px solid var(--border-color);">
               <i class="fas fa-sync"></i> <span id="syncStatus">Real-time sync enabled 🔄</span>
             </div>
-            ${currentTripPin ? `<div style="color:#94a3b8; font-size:12px; margin-top:4px;">🔑 Active PIN: <strong>${currentTripPin}</strong></div>` : ''}
+            ${currentTripPin ? `<div style="color:var(--text-muted); font-size:12px; margin-top:4px;">🔑 Active PIN: <strong>${currentTripPin}</strong></div>` : ''}
           </div>
 
           <div class="grid-2">
@@ -1236,20 +1670,40 @@
             <div class="card">
               <h3><i class="fas fa-map"></i> Live Location</h3>
               <button id="trackLocationBtn" class="btn-success" style="padding:10px 20px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;"><i class="fas fa-location-dot"></i> Track My Location</button>
-              <div id="locationStatus" style="margin-top:10px;color:#94a3b8;font-size:14px;">Click to get your current position.</div>
+              <div id="locationStatus" style="margin-top:10px;color:var(--text-muted);font-size:14px;">Click to get your current position.</div>
             </div>
+          </div>
+
+          <!-- Budget -->
+          <div class="card">
+            <h3><i class="fas fa-coins"></i> Budget Tracker</h3>
+            <div class="input-group">
+              <input type="number" id="budgetInput" placeholder="Set budget (₹)" min="0" step="100">
+              <button id="setBudgetBtn"><i class="fas fa-check"></i> Set Budget</button>
+            </div>
+            <div id="budgetDisplay">
+              <div style="color:var(--text-muted);">Set a budget to track your spending.</div>
+            </div>
+          </div>
+
+          <!-- Push Notifications -->
+          <div class="card">
+            <h3><i class="fas fa-bell"></i> Notifications</h3>
+            <button onclick="requestNotificationPermission()" class="btn-purple" style="padding:10px 24px;border:none;border-radius:30px;color:#fff;font-weight:600;cursor:pointer;"><i class="fas fa-bell"></i> Enable Notifications</button>
+            <span style="color:var(--text-muted);font-size:13px;margin-left:12px;">Get alerts for new expenses</span>
           </div>
         </div>
 
+        <!-- ===== ITINERARY ===== -->
         <div id="page-itinerary" class="page">
           <div class="card">
             <h3><i class="fas fa-plus-circle"></i> Add New Place</h3>
             <div class="input-group">
               <input type="text" id="placeName" placeholder="Enter place name" style="flex:2;">
-              <button id="searchPlaceBtn" style="background:#10b981;"><i class="fas fa-search"></i> Search</button>
-              <span id="searchStatus" style="color:#94a3b8; font-size:13px;"></span>
+              <button id="searchPlaceBtn" style="background:var(--success);"><i class="fas fa-search"></i> Search</button>
+              <span id="searchStatus" style="color:var(--text-muted); font-size:13px;"></span>
             </div>
-            <div style="color:#94a3b8; font-size:13px; margin-bottom:8px;">💡 Click on the map to set coordinates.</div>
+            <div style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">💡 Click on the map to set coordinates.</div>
             <div class="input-group">
               <input type="datetime-local" id="placeTime">
               <input type="text" id="placeLat" placeholder="Latitude">
@@ -1266,7 +1720,7 @@
           </div>
           <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <h3 style="font-size:16px; font-weight:600; color:#cbd5e1; margin:0;"><i class="fas fa-map"></i> Navigation</h3>
+              <h3 style="font-size:16px; font-weight:600; color:var(--text-secondary); margin:0;"><i class="fas fa-map"></i> Navigation</h3>
               <button id="navToggleBtn" class="btn-success" style="padding:8px 20px; border:none; border-radius:30px; color:#fff; font-weight:600; cursor:pointer;">
                 <i class="fas fa-play"></i> Start
               </button>
@@ -1276,6 +1730,7 @@
           </div>
         </div>
 
+        <!-- ===== EXPENSES ===== -->
         <div id="page-expenses" class="page">
           <div class="card">
             <h3><i class="fas fa-receipt"></i> Add Expense</h3>
@@ -1283,13 +1738,20 @@
               <input type="text" id="expDesc" placeholder="Description">
               <input type="number" id="expAmount" placeholder="Amount (₹)">
               <select id="expPaidBy"><option value="">-- Paid By --</option></select>
+              <select id="expCategory">
+                <option value="Food">🍔 Food</option>
+                <option value="Travel">🚗 Travel</option>
+                <option value="Stay">🏨 Stay</option>
+                <option value="Shopping">🛍️ Shopping</option>
+                <option value="Other">📦 Other</option>
+              </select>
             </div>
             <div class="input-group">
               <input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()">
               <button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button>
             </div>
             <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
-            <div style="color:#94a3b8; font-size:13px; margin-top:8px;">💰 Shared equally among all participants. Optional receipt upload.</div>
+            <div style="color:var(--text-muted); font-size:13px; margin-top:8px;">💰 Shared equally. Optional receipt upload (image/PDF).</div>
           </div>
           <div class="card">
             <h3><i class="fas fa-list-ul"></i> All Expenses</h3>
@@ -1297,6 +1759,7 @@
           </div>
         </div>
 
+        <!-- ===== SETTLEMENTS ===== -->
         <div id="page-settlements" class="page">
           <div class="card">
             <h3><i class="fas fa-calculator"></i> Settlement</h3>
@@ -1304,6 +1767,53 @@
             <div id="settlementSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;"></div>
             <div id="settlementTransactions"></div>
             <button id="downloadPdfBtn" class="btn-danger" style="margin-top:20px;padding:12px 28px;border:none;border-radius:30px;color:#fff;font-weight:700;cursor:pointer;"><i class="fas fa-file-pdf"></i> Download PDF</button>
+          </div>
+        </div>
+
+        <!-- ===== WEATHER ===== -->
+        <div id="page-weather" class="page">
+          <div class="card">
+            <h3><i class="fas fa-cloud-sun"></i> Weather Forecast</h3>
+            <div id="weatherContainer"><div style="color:var(--text-muted);">Loading weather...</div></div>
+            <div style="margin-top:12px;color:var(--text-muted);font-size:13px;">ℹ️ Weather for the first place in your itinerary. Requires OpenWeatherMap API key.</div>
+          </div>
+        </div>
+
+        <!-- ===== CHART ===== -->
+        <div id="page-chart" class="page">
+          <div class="card">
+            <h3><i class="fas fa-chart-pie"></i> Expense Breakdown by Category</h3>
+            <div id="chartContainer"><canvas id="expenseChart" style="max-height:250px;max-width:100%;"></canvas></div>
+          </div>
+        </div>
+
+        <!-- ===== CHAT ===== -->
+        <div id="page-chat" class="page">
+          <div class="card">
+            <h3><i class="fas fa-comments"></i> Trip Chat</h3>
+            <div class="chat-container" id="chatMessages">
+              <div style="color:var(--text-muted);text-align:center;padding:20px;">No messages yet. Start the conversation!</div>
+            </div>
+            <div class="input-group">
+              <input type="text" id="chatInput" placeholder="Type a message...">
+              <button id="sendChatBtn"><i class="fas fa-paper-plane"></i> Send</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== PACKING ===== -->
+        <div id="page-packing" class="page">
+          <div class="card">
+            <h3><i class="fas fa-suitcase"></i> Packing Checklist</h3>
+            <div class="input-group">
+              <input type="text" id="packingInput" placeholder="Add item...">
+              <select id="packingType">
+                <option value="personal">👤 Personal</option>
+                <option value="common">👥 Common</option>
+              </select>
+              <button id="addPackingBtn"><i class="fas fa-plus"></i> Add</button>
+            </div>
+            <div id="packingList"></div>
           </div>
         </div>
       `;
@@ -1325,9 +1835,11 @@
       document.getElementById('downloadPdfBtn').addEventListener('click', exportPDF);
       document.getElementById('trackLocationBtn').addEventListener('click', function() { startLiveTracking(); });
       document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
-
-      window.handleReceiptChange = handleReceiptChange;
-      window.removeReceipt = removeReceipt;
+      document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
+      document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+      document.getElementById('addPackingBtn').addEventListener('click', addPackingItem);
+      document.getElementById('packingInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addPackingItem(); });
+      document.getElementById('setBudgetBtn').addEventListener('click', setBudget);
 
       // Delegation for remove buttons
       document.getElementById('expenseList').addEventListener('click', function(e) {
@@ -1343,12 +1855,30 @@
         if (target) { removeItinerary(parseInt(target.dataset.idx)); }
       });
 
+      window.handleReceiptChange = handleReceiptChange;
+      window.removeReceipt = removeReceipt;
+      window.openEditModal = openEditModal;
+      window.closeEditModal = closeEditModal;
+      window.saveEditExpense = saveEditExpense;
+      window.shareViaWhatsApp = shareViaWhatsApp;
+      window.shareViaSMS = shareViaSMS;
+      window.requestNotificationPermission = requestNotificationPermission;
+      window.toggleTheme = toggleTheme;
+      window.addPackingItem = addPackingItem;
+      window.togglePacking = togglePacking;
+      window.removePacking = removePacking;
+
       renderParticipants();
       renderItinerary();
       renderExpenses();
+      renderPacking();
+      renderChat();
       updateStats();
       updateSelects();
+      updateBudgetUI();
       initMap();
+      setTimeout(updateChart, 300);
+      setTimeout(fetchWeather, 500);
 
       if (currentTripPin && !isSyncing) {
         startRealtimeListener(currentTripPin);
@@ -1356,7 +1886,7 @@
     }
 
     // ======================================================
-    // 15. EVENT BINDINGS FOR AUTH
+    // 24. AUTH EVENT BINDINGS
     // ======================================================
     document.getElementById('newTripBtn').addEventListener('click', createNewTrip);
     document.getElementById('joinTripBtn').addEventListener('click', joinTrip);
@@ -1364,6 +1894,10 @@
       if (e.key === 'Enter') document.getElementById('joinTripBtn').click();
     });
 
+    // Load saved theme
+    loadTheme();
+
+    // Auto-join if saved pin exists
     const savedPin = localStorage.getItem('tripPin');
     if (savedPin) {
       document.getElementById('pinInput').value = savedPin;
@@ -1371,7 +1905,7 @@
     }
 
     // ======================================================
-    // 16. SERVICE WORKER (PWA)
+    // 25. SERVICE WORKER (PWA)
     // ======================================================
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js')
