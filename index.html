@@ -1,4 +1,4 @@
-<!-- Trip Planner - Sidebar, Dashboard Auth, Enhanced Packing -->
+<!-- Trip Planner - Sidebar + Sliding Tabs -->
 <!DOCTYPE html>
 <html lang="ml" data-theme="light">
 <head>
@@ -175,8 +175,8 @@
       align-items: center;
       flex-wrap: wrap;
       gap: 12px;
-      margin-bottom: 24px;
-      padding-bottom: 16px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
       border-bottom: 1px solid var(--border-color);
     }
     .app-header h1 { font-size: 22px; font-weight: 700; color: var(--text-primary); }
@@ -185,6 +185,42 @@
     .badge { background:var(--bg-chip); padding:4px 16px; border-radius:30px; font-size:13px; color:var(--text-muted); border:1px solid var(--border-color); }
     .theme-toggle { background:var(--bg-input); border:1px solid var(--border-color); border-radius:30px; padding:6px 14px; color:var(--text-primary); cursor:pointer; font-size:16px; transition:0.2s; }
     .theme-toggle:hover { background:var(--bg-hover); }
+
+    /* ========== SLIDING TABS (Horizontal) ========== */
+    .sliding-tabs {
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 6px;
+      background: var(--bg-secondary);
+      padding: 8px 12px;
+      border-radius: 16px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border-color);
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
+    .sliding-tabs::-webkit-scrollbar { height: 4px; }
+    .sliding-tabs::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 10px; }
+    .sliding-tabs button {
+      flex: 0 0 auto;
+      background: transparent;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sliding-tabs button i { font-size: 14px; }
+    .sliding-tabs button:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .sliding-tabs button.active { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
 
     /* ========== CARDS ========== */
     .card { background:var(--bg-card); border:1px solid var(--border-color); border-radius:20px; padding:24px; margin-bottom:24px; box-shadow:var(--card-shadow); transition:background 0.3s,border 0.3s; }
@@ -368,7 +404,19 @@
       <button onclick="requestNotificationPermission()" style="background:var(--primary);border:none;padding:4px 16px;border-radius:20px;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Enable</button>
     </div>
 
-    <!-- ===== PAGES (will be filled by JS) ===== -->
+    <!-- Sliding Tabs (Horizontal) -->
+    <div class="sliding-tabs" id="slidingTabs">
+      <button class="active" data-page="dashboard"><i class="fas fa-home"></i> Dash</button>
+      <button data-page="itinerary"><i class="fas fa-map-marked-alt"></i> Itinerary</button>
+      <button data-page="expenses"><i class="fas fa-wallet"></i> Expenses</button>
+      <button data-page="settlements"><i class="fas fa-hand-holding-usd"></i> Settle</button>
+      <button data-page="weather"><i class="fas fa-cloud-sun"></i> Weather</button>
+      <button data-page="chart"><i class="fas fa-chart-pie"></i> Chart</button>
+      <button data-page="chat"><i class="fas fa-comments"></i> Chat</button>
+      <button data-page="packing"><i class="fas fa-suitcase"></i> Packing</button>
+    </div>
+
+    <!-- ===== PAGES ===== -->
     <div id="page-dashboard" class="page active"></div>
     <div id="page-itinerary" class="page"></div>
     <div id="page-expenses" class="page"></div>
@@ -873,7 +921,6 @@
     document.getElementById('addPackingBtn').addEventListener('click', addPackingItem);
     document.getElementById('packingInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addPackingItem(); });
     renderPacking();
-    // Expose addPredefinedItems to global
     window.addPredefinedItems = addPredefinedItems;
   }
 
@@ -909,7 +956,6 @@
     const personal = ['Passport', 'Aadhar Card', 'Wallet', 'Sunglasses', 'Hat'];
     const common = ['First Aid Kit', 'Umbrella', 'Water Bottle', 'Snacks', 'Power Bank'];
     const electronics = ['Phone Charger', 'Camera', 'Laptop', 'Headphones', 'Adapter'];
-    const existing = (list) => list.map(i => i.text);
     const addItems = (category, items) => {
       const current = appData.packing[category] || [];
       const currentTexts = current.map(i => i.text);
@@ -1371,15 +1417,20 @@
   }
 
   // ============================================================
-  // 19. NAVIGATION & UI
+  // 19. NAVIGATION (Sidebar + Sliding Tabs)
   // ============================================================
   function switchPage(pageId) {
+    // Update sidebar
     document.querySelectorAll('.sidebar .nav-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`.sidebar .nav-item[data-page="${pageId}"]`)?.classList.add('active');
+    // Update sliding tabs
+    document.querySelectorAll('.sliding-tabs button').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.sliding-tabs button[data-page="${pageId}"]`)?.classList.add('active');
+    // Show page
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const target = document.getElementById('page-' + pageId);
     if (target) target.classList.add('active');
-    // Rebuild page content if needed
+    // Build content if needed
     if (pageId === 'itinerary' && !document.getElementById('map')) buildItinerary();
     if (pageId === 'expenses') renderExpensesList();
     if (pageId === 'settlements') calculateSettlements();
@@ -1392,12 +1443,7 @@
     document.getElementById('sidebar').classList.remove('open');
   }
 
-  // Mobile menu toggle
-  document.getElementById('menuToggle').addEventListener('click', function() {
-    document.getElementById('sidebar').classList.toggle('open');
-  });
-
-  // Sidebar click
+  // Sidebar clicks
   document.querySelectorAll('.sidebar .nav-item').forEach(item => {
     item.addEventListener('click', function() {
       const page = this.dataset.page;
@@ -1405,16 +1451,42 @@
     });
   });
 
+  // Sliding tabs clicks
+  document.querySelectorAll('.sliding-tabs button').forEach(item => {
+    item.addEventListener('click', function() {
+      const page = this.dataset.page;
+      if (page) switchPage(page);
+    });
+  });
+
+  // Mobile menu toggle
+  document.getElementById('menuToggle').addEventListener('click', function() {
+    document.getElementById('sidebar').classList.toggle('open');
+  });
+
   // ============================================================
   // 20. INITIALIZE
   // ============================================================
   loadTheme();
-  // Check if already joined via localStorage
   const savedPin = localStorage.getItem('tripPin');
   if (savedPin) {
     // Try to join automatically
     setTimeout(() => {
-      document.getElementById('pinInput')?.value && joinTrip();
+      // We need to trigger join after DOM ready
+      // Since we use the same functions, we can just call joinTrip if pinInput exists
+      const pinInput = document.getElementById('pinInput');
+      if (pinInput) {
+        pinInput.value = savedPin;
+        joinTrip();
+      } else {
+        // If auth card not yet rendered, we can set a global var and check later
+        // Better: just show auth card and prefill
+        showAuthCard();
+        const pinInput2 = document.getElementById('pinInput');
+        if (pinInput2) pinInput2.value = savedPin;
+        // Auto click join
+        setTimeout(() => document.getElementById('joinTripBtn')?.click(), 300);
+      }
     }, 300);
   } else {
     showAuthCard();
