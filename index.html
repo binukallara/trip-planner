@@ -1,4 +1,4 @@
-<!-- Trip Planner - Sidebar + Sliding Tabs -->
+<!-- Trip Planner - All Issues Fixed (Delete, Map, PDF, Sync, Auto-Login) -->
 <!DOCTYPE html>
 <html lang="ml" data-theme="light">
 <head>
@@ -145,7 +145,6 @@
     .sidebar .nav-item i { width: 20px; font-size: 16px; }
     .sidebar .nav-item .badge { margin-left: auto; background: var(--primary); color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 20px; }
 
-    /* Hamburger toggle for mobile */
     .menu-toggle {
       display: none;
       position: fixed;
@@ -186,7 +185,7 @@
     .theme-toggle { background:var(--bg-input); border:1px solid var(--border-color); border-radius:30px; padding:6px 14px; color:var(--text-primary); cursor:pointer; font-size:16px; transition:0.2s; }
     .theme-toggle:hover { background:var(--bg-hover); }
 
-    /* ========== SLIDING TABS (Horizontal) ========== */
+    /* ========== SLIDING TABS ========== */
     .sliding-tabs {
       display: flex;
       flex-wrap: nowrap;
@@ -288,7 +287,6 @@
     .chat-msg .sender { font-size:12px; font-weight:600; color:var(--text-muted); }
     .chat-msg .time { font-size:10px; color:var(--text-muted); margin-left:8px; }
 
-    /* ========== PACKING ========== */
     .packing-section { margin-bottom:16px; }
     .packing-section h4 { font-size:14px; font-weight:600; color:var(--text-secondary); margin-bottom:8px; }
     .packing-item { display:flex; align-items:center; gap:12px; padding:6px 12px; background:var(--bg-secondary); border-radius:8px; margin-bottom:4px; border:1px solid var(--border-color); }
@@ -297,7 +295,6 @@
     .packing-item .item-text.done { text-decoration:line-through; color:var(--text-muted); }
     .packing-item .item-category { font-size:11px; padding:2px 10px; border-radius:20px; background:var(--bg-chip); color:var(--text-muted); }
 
-    /* ========== MODAL ========== */
     .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:99999; justify-content:center; align-items:center; animation:fadeIn 0.3s ease; }
     .modal-overlay.active { display:flex; }
     .modal-box { background:var(--bg-card); border:1px solid var(--border-color); border-radius:24px; padding:30px; max-width:500px; width:90%; color:var(--text-primary); box-shadow:0 20px 60px rgba(0,0,0,0.8); max-height:90vh; overflow-y:auto; }
@@ -310,7 +307,7 @@
     .modal-box .btn-group .save-btn { background:var(--primary); color:#fff; }
     .modal-box .btn-group .save-btn:hover { background:var(--primary-hover); }
 
-    /* ========== AUTH CARD (inside dashboard) ========== */
+    /* ========== AUTH CARD ========== */
     .auth-card { background:var(--bg-card); border:2px solid var(--primary); border-radius:20px; padding:24px; margin-bottom:24px; text-align:center; }
     .auth-card h2 { font-size:22px; margin-bottom:8px; color:var(--text-primary); }
     .auth-card h2 i { color:var(--primary); margin-right:10px; }
@@ -404,7 +401,7 @@
       <button onclick="requestNotificationPermission()" style="background:var(--primary);border:none;padding:4px 16px;border-radius:20px;color:#fff;cursor:pointer;font-size:12px;font-weight:600;">Enable</button>
     </div>
 
-    <!-- Sliding Tabs (Horizontal) -->
+    <!-- Sliding Tabs -->
     <div class="sliding-tabs" id="slidingTabs">
       <button class="active" data-page="dashboard"><i class="fas fa-home"></i> Dash</button>
       <button data-page="itinerary"><i class="fas fa-map-marked-alt"></i> Itinerary</button>
@@ -416,7 +413,7 @@
       <button data-page="packing"><i class="fas fa-suitcase"></i> Packing</button>
     </div>
 
-    <!-- ===== PAGES ===== -->
+    <!-- PAGES -->
     <div id="page-dashboard" class="page active"></div>
     <div id="page-itinerary" class="page"></div>
     <div id="page-expenses" class="page"></div>
@@ -530,6 +527,9 @@
       .catch(err => { isLocalUpdate = false; console.error('Sync error:', err); updateSyncStatus('❌ Sync failed: ' + err.message, true); });
   }
 
+  // ============================================================
+  // 4. REAL-TIME LISTENER (Granular Updates)
+  // ============================================================
   function startRealtimeListener(pin) {
     if (isSyncing) return;
     isSyncing = true;
@@ -538,7 +538,15 @@
       const remoteData = snapshot.val();
       if (isLocalUpdate) { isLocalUpdate = false; return; }
       const oldData = appData;
-      const newData = { ...remoteData, participants: remoteData.participants || [], itinerary: remoteData.itinerary || [], expenses: remoteData.expenses || [], packing: remoteData.packing || { personal: [], common: [], electronics: [] }, chatMessages: remoteData.chatMessages || [], budget: remoteData.budget || 0 };
+      const newData = {
+        ...remoteData,
+        participants: remoteData.participants || [],
+        itinerary: remoteData.itinerary || [],
+        expenses: remoteData.expenses || [],
+        packing: remoteData.packing || { personal: [], common: [], electronics: [] },
+        chatMessages: remoteData.chatMessages || [],
+        budget: remoteData.budget || 0
+      };
       // Detect changes for notifications
       if (oldData.expenses && newData.expenses && newData.expenses.length > oldData.expenses.length) {
         const newExp = newData.expenses[newData.expenses.length - 1];
@@ -557,14 +565,35 @@
       if (oldData.tripName !== newData.tripName || oldData.tripDate !== newData.tripDate) {
         showNotification('✈️ Trip Updated', `${newData.tripName} - ${newData.tripDate}`, 'trip-update');
       }
+      // Update appData
       appData = newData;
       localStorage.setItem('tripData', JSON.stringify(appData));
-      reRenderAll();
+      // Granular updates (no full re-render)
+      updateUI();
     }, (error) => console.error('Listener error:', error));
   }
 
   // ============================================================
-  // 4. THEME
+  // 5. GRANULAR UI UPDATE (instead of reRenderAll)
+  // ============================================================
+  function updateUI() {
+    // Only update visible parts to avoid input reset
+    updateParticipants();
+    updateItinerary();
+    updateExpenses();
+    updateStats();
+    updateBudgetUI();
+    updateChat();
+    updatePacking();
+    updateChart();
+    // Header status
+    document.getElementById('tripStatus').innerHTML = `📅 ${appData.tripDate} | ${appData.tripName}`;
+    // Map markers if map exists
+    if (mapInstance) updateMapMarkers();
+  }
+
+  // ============================================================
+  // 6. THEME
   // ============================================================
   function toggleTheme() {
     currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -583,7 +612,7 @@
   }
 
   // ============================================================
-  // 5. AUTH (Integrated into Dashboard)
+  // 7. AUTH (Integrated into Dashboard)
   // ============================================================
   function showAuthCard() {
     const page = document.getElementById('page-dashboard');
@@ -674,24 +703,8 @@
   function shareViaSMS(pin) { const url = window.location.href; const msg = encodeURIComponent(`Trip Planner: Join my trip with PIN: ${pin}\n${url}`); if (navigator.share) { navigator.share({ title: 'Trip Planner', text: `Join my trip with PIN: ${pin}\n${url}` }); } else { window.location.href = `sms:?body=${msg}`; } }
 
   // ============================================================
-  // 6. RENDER FUNCTIONS (all pages)
+  // 8. RENDER FUNCTIONS (Page Builders)
   // ============================================================
-  function reRenderAll() {
-    if (!currentTripPin) { showAuthCard(); return; }
-    buildDashboard();
-    buildItinerary();
-    buildExpenses();
-    buildSettlements();
-    buildWeather();
-    buildChart();
-    buildChat();
-    buildPacking();
-    // Update header status
-    document.getElementById('tripStatus').innerHTML = `📅 ${appData.tripDate} | ${appData.tripName}`;
-    // Update stats in dashboard
-    updateStatsUI();
-  }
-
   function buildDashboard() {
     const page = document.getElementById('page-dashboard');
     if (!page) return;
@@ -710,60 +723,19 @@
       </div>
       <div class="card"><h3><i class="fas fa-coins"></i> Budget Tracker</h3><div class="input-group"><input type="number" id="budgetInput" placeholder="Set budget (₹)" min="0" step="100"><button id="setBudgetBtn"><i class="fas fa-check"></i> Set Budget</button></div><div id="budgetDisplay"><div style="color:var(--text-muted);">Set a budget to track your spending.</div></div></div>
     `;
-    // Bind events
+    // Attach listeners
     document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
     document.getElementById('participantInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
     document.getElementById('updateTripBtn').addEventListener('click', updateTrip);
     document.getElementById('startNewTripBtn').addEventListener('click', startNewTrip);
     document.getElementById('trackLocationBtn').addEventListener('click', startLiveTracking);
     document.getElementById('setBudgetBtn').addEventListener('click', setBudget);
-    renderParticipants();
-    updateStatsUI();
+    // Render initial data
+    updateParticipants();
+    updateStats();
     updateBudgetUI();
   }
 
-  function updateStatsUI() {
-    const participants = appData.participants || [];
-    const expenses = appData.expenses || [];
-    document.getElementById('dashParticipantCount').innerText = participants.length;
-    const total = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
-    document.getElementById('dashTotalCost').innerHTML = '₹' + total.toFixed(2);
-    document.getElementById('dashPlaceCount').innerText = (appData.itinerary || []).length;
-  }
-
-  function renderParticipants() {
-    const c = document.getElementById('participantChips');
-    if (!c) return;
-    c.innerHTML = (appData.participants || []).map(p => `<div class="chip">${p} <span class="remove-chip" data-action="removePart" data-name="${p}"><i class="fas fa-times"></i></span></div>`).join('');
-    updateSelects();
-    updateStatsUI();
-  }
-
-  function updateSelects() {
-    const paidBy = document.getElementById('expPaidBy');
-    if (!paidBy) return;
-    const opts = (appData.participants || []).map(p => `<option value="${p}">${p}</option>`).join('');
-    paidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
-    const editPaidBy = document.getElementById('editExpPaidBy');
-    if (editPaidBy) editPaidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
-  }
-
-  function updateBudgetUI() {
-    const budget = appData.budget || 0;
-    const total = (appData.expenses || []).reduce((s, e) => s + parseFloat(e.amount), 0);
-    const percent = budget > 0 ? Math.min((total / budget) * 100, 100) : 0;
-    const el = document.getElementById('budgetDisplay');
-    if (!el) return;
-    el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 Budget: ₹${budget.toFixed(2)}</span><span>Spent: ₹${total.toFixed(2)}</span><span>Remaining: ₹${(budget-total).toFixed(2)}</span></div>
-      <div class="progress-container"><div class="progress-bar" style="width:${percent}%;"></div></div>
-      <div class="progress-text">${percent.toFixed(1)}% used</div>
-    `;
-  }
-
-  // ============================================================
-  // 7. ITINERARY PAGE
-  // ============================================================
   function buildItinerary() {
     const page = document.getElementById('page-itinerary');
     if (!page) return;
@@ -781,11 +753,115 @@
     document.getElementById('searchPlaceBtn').addEventListener('click', searchPlace);
     document.getElementById('placeName').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchPlace(); });
     document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
-    renderItineraryList();
+    // Render itinerary
+    updateItinerary();
     initMap();
   }
 
-  function renderItineraryList() {
+  function buildExpenses() {
+    const page = document.getElementById('page-expenses');
+    if (!page) return;
+    page.innerHTML = `
+      <div class="card"><h3><i class="fas fa-receipt"></i> Add Expense</h3>
+        <div class="input-group"><input type="text" id="expDesc" placeholder="Description"><input type="number" id="expAmount" placeholder="Amount (₹)"><select id="expPaidBy"><option value="">-- Paid By --</option></select><select id="expCategory"><option value="Food">🍔 Food</option><option value="Travel">🚗 Travel</option><option value="Stay">🏨 Stay</option><option value="Shopping">🛍️ Shopping</option><option value="Other">📦 Other</option></select></div>
+        <div class="input-group"><input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()"><button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button></div>
+        <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
+        <div style="color:var(--text-muted);font-size:13px;margin-top:8px;">💰 Shared equally. Optional receipt upload.</div>
+      </div>
+      <div class="card"><h3><i class="fas fa-list-ul"></i> All Expenses</h3><div id="expenseList"></div></div>
+    `;
+    document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
+    // Render expenses
+    updateExpenses();
+  }
+
+  function buildSettlements() {
+    const page = document.getElementById('page-settlements');
+    if (!page) return;
+    page.innerHTML = `
+      <div class="card"><h3><i class="fas fa-calculator"></i> Settlement</h3>
+        <button id="calculateSettleBtn" class="btn-success" style="padding:10px 24px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;margin-bottom:16px;"><i class="fas fa-sync"></i> Calculate</button>
+        <div id="settlementSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;"></div>
+        <div id="settlementTransactions"></div>
+        <button id="downloadPdfBtn" class="btn-danger" style="margin-top:20px;padding:12px 28px;border:none;border-radius:30px;color:#fff;font-weight:700;cursor:pointer;"><i class="fas fa-file-pdf"></i> Download PDF</button>
+      </div>
+    `;
+    document.getElementById('calculateSettleBtn').addEventListener('click', calculateSettlements);
+    document.getElementById('downloadPdfBtn').addEventListener('click', exportPDF);
+  }
+
+  function buildWeather() {
+    const page = document.getElementById('page-weather');
+    if (!page) return;
+    page.innerHTML = `<div class="card"><h3><i class="fas fa-cloud-sun"></i> Weather Forecast</h3><div id="weatherContainer"><div style="color:var(--text-muted);">Loading weather...</div></div></div>`;
+    fetchWeather();
+  }
+
+  function buildChart() {
+    const page = document.getElementById('page-chart');
+    if (!page) return;
+    page.innerHTML = `<div class="card"><h3><i class="fas fa-chart-pie"></i> Expense Breakdown</h3><div id="chartContainer"><canvas id="expenseChart" style="max-height:250px;max-width:100%;"></canvas></div></div>`;
+    setTimeout(updateChart, 200);
+  }
+
+  function buildChat() {
+    const page = document.getElementById('page-chat');
+    if (!page) return;
+    page.innerHTML = `
+      <div class="card"><h3><i class="fas fa-comments"></i> Trip Chat</h3>
+        <div class="chat-container" id="chatMessages"><div style="color:var(--text-muted);text-align:center;padding:20px;">No messages yet.</div></div>
+        <div class="input-group"><input type="text" id="chatInput" placeholder="Type a message..."><button id="sendChatBtn"><i class="fas fa-paper-plane"></i> Send</button></div>
+      </div>
+    `;
+    document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
+    document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+    updateChat();
+  }
+
+  function buildPacking() {
+    const page = document.getElementById('page-packing');
+    if (!page) return;
+    page.innerHTML = `
+      <div class="card"><h3><i class="fas fa-suitcase"></i> Packing Checklist</h3>
+        <div class="input-group">
+          <input type="text" id="packingInput" placeholder="Add custom item...">
+          <select id="packingType"><option value="personal">👤 Personal</option><option value="common">👥 Common</option><option value="electronics">🔌 Electronics</option></select>
+          <button id="addPackingBtn"><i class="fas fa-plus"></i> Add</button>
+        </div>
+        <div style="margin:12px 0;">
+          <button onclick="addPredefinedItems()" class="btn-purple" style="padding:6px 16px;border:none;border-radius:20px;color:#fff;font-weight:600;cursor:pointer;">📋 Add Common Items</button>
+        </div>
+        <div id="packingList"></div>
+      </div>
+    `;
+    document.getElementById('addPackingBtn').addEventListener('click', addPackingItem);
+    document.getElementById('packingInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addPackingItem(); });
+    updatePacking();
+    window.addPredefinedItems = addPredefinedItems;
+  }
+
+  // ============================================================
+  // 9. UPDATE FUNCTIONS (Granular)
+  // ============================================================
+  function updateParticipants() {
+    const c = document.getElementById('participantChips');
+    if (!c) return;
+    c.innerHTML = (appData.participants || []).map(p =>
+      `<div class="chip">${p} <span class="remove-chip" data-action="removePart" data-name="${p}"><i class="fas fa-times"></i></span></div>`
+    ).join('');
+    updateSelects();
+  }
+
+  function updateSelects() {
+    const paidBy = document.getElementById('expPaidBy');
+    if (!paidBy) return;
+    const opts = (appData.participants || []).map(p => `<option value="${p}">${p}</option>`).join('');
+    paidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
+    const editPaidBy = document.getElementById('editExpPaidBy');
+    if (editPaidBy) editPaidBy.innerHTML = `<option value="">-- Paid By --</option>${opts}`;
+  }
+
+  function updateItinerary() {
     const c = document.getElementById('itineraryList');
     if (!c) return;
     const data = appData.itinerary || [];
@@ -800,26 +876,7 @@
     if (mapInstance) updateMapMarkers();
   }
 
-  // ============================================================
-  // 8. EXPENSES PAGE
-  // ============================================================
-  function buildExpenses() {
-    const page = document.getElementById('page-expenses');
-    if (!page) return;
-    page.innerHTML = `
-      <div class="card"><h3><i class="fas fa-receipt"></i> Add Expense</h3>
-        <div class="input-group"><input type="text" id="expDesc" placeholder="Description"><input type="number" id="expAmount" placeholder="Amount (₹)"><select id="expPaidBy"><option value="">-- Paid By --</option></select><select id="expCategory"><option value="Food">🍔 Food</option><option value="Travel">🚗 Travel</option><option value="Stay">🏨 Stay</option><option value="Shopping">🛍️ Shopping</option><option value="Other">📦 Other</option></select></div>
-        <div class="input-group"><input type="file" id="expReceipt" accept="image/*,.pdf" onchange="handleReceiptChange()"><button id="removeReceiptBtn" class="btn-danger" style="display:none;" onclick="removeReceipt()"><i class="fas fa-times"></i> Remove Receipt</button></div>
-        <div class="input-group"><button id="addExpenseBtn"><i class="fas fa-plus"></i> Add Expense</button></div>
-        <div style="color:var(--text-muted);font-size:13px;margin-top:8px;">💰 Shared equally. Optional receipt upload.</div>
-      </div>
-      <div class="card"><h3><i class="fas fa-list-ul"></i> All Expenses</h3><div id="expenseList"></div></div>
-    `;
-    document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
-    renderExpensesList();
-  }
-
-  function renderExpensesList() {
+  function updateExpenses() {
     const c = document.getElementById('expenseList');
     if (!c) return;
     const data = appData.expenses || [];
@@ -839,92 +896,48 @@
         </div>
       `;
     }).join('');
-    updateStatsUI();
+    updateStats();
     updateChart();
     updateBudgetUI();
   }
 
-  // ============================================================
-  // 9. SETTLEMENTS PAGE
-  // ============================================================
-  function buildSettlements() {
-    const page = document.getElementById('page-settlements');
-    if (!page) return;
-    page.innerHTML = `
-      <div class="card"><h3><i class="fas fa-calculator"></i> Settlement</h3>
-        <button id="calculateSettleBtn" class="btn-success" style="padding:10px 24px;border-radius:30px;border:none;color:#fff;font-weight:600;cursor:pointer;margin-bottom:16px;"><i class="fas fa-sync"></i> Calculate</button>
-        <div id="settlementSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;"></div>
-        <div id="settlementTransactions"></div>
-        <button id="downloadPdfBtn" class="btn-danger" style="margin-top:20px;padding:12px 28px;border:none;border-radius:30px;color:#fff;font-weight:700;cursor:pointer;"><i class="fas fa-file-pdf"></i> Download PDF</button>
-      </div>
+  function updateStats() {
+    const participants = appData.participants || [];
+    const expenses = appData.expenses || [];
+    document.getElementById('dashParticipantCount').innerText = participants.length;
+    const total = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+    document.getElementById('dashTotalCost').innerHTML = '₹' + total.toFixed(2);
+    document.getElementById('dashPlaceCount').innerText = (appData.itinerary || []).length;
+  }
+
+  function updateBudgetUI() {
+    const budget = appData.budget || 0;
+    const total = (appData.expenses || []).reduce((s, e) => s + parseFloat(e.amount), 0);
+    const percent = budget > 0 ? Math.min((total / budget) * 100, 100) : 0;
+    const el = document.getElementById('budgetDisplay');
+    if (!el) return;
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 Budget: ₹${budget.toFixed(2)}</span><span>Spent: ₹${total.toFixed(2)}</span><span>Remaining: ₹${(budget-total).toFixed(2)}</span></div>
+      <div class="progress-container"><div class="progress-bar" style="width:${percent}%;"></div></div>
+      <div class="progress-text">${percent.toFixed(1)}% used</div>
     `;
-    document.getElementById('calculateSettleBtn').addEventListener('click', calculateSettlements);
-    document.getElementById('downloadPdfBtn').addEventListener('click', exportPDF);
   }
 
-  // ============================================================
-  // 10. WEATHER PAGE
-  // ============================================================
-  function buildWeather() {
-    const page = document.getElementById('page-weather');
-    if (!page) return;
-    page.innerHTML = `<div class="card"><h3><i class="fas fa-cloud-sun"></i> Weather Forecast</h3><div id="weatherContainer"><div style="color:var(--text-muted);">Loading weather...</div></div></div>`;
-    fetchWeather();
-  }
-
-  // ============================================================
-  // 11. CHART PAGE
-  // ============================================================
-  function buildChart() {
-    const page = document.getElementById('page-chart');
-    if (!page) return;
-    page.innerHTML = `<div class="card"><h3><i class="fas fa-chart-pie"></i> Expense Breakdown</h3><div id="chartContainer"><canvas id="expenseChart" style="max-height:250px;max-width:100%;"></canvas></div></div>`;
-    setTimeout(updateChart, 200);
-  }
-
-  // ============================================================
-  // 12. CHAT PAGE
-  // ============================================================
-  function buildChat() {
-    const page = document.getElementById('page-chat');
-    if (!page) return;
-    page.innerHTML = `
-      <div class="card"><h3><i class="fas fa-comments"></i> Trip Chat</h3>
-        <div class="chat-container" id="chatMessages"><div style="color:var(--text-muted);text-align:center;padding:20px;">No messages yet.</div></div>
-        <div class="input-group"><input type="text" id="chatInput" placeholder="Type a message..."><button id="sendChatBtn"><i class="fas fa-paper-plane"></i> Send</button></div>
+  function updateChat() {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    const msgs = appData.chatMessages || [];
+    if (msgs.length === 0) { container.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">No messages yet.</div>'; return; }
+    const sender = localStorage.getItem('chatUser') || 'You';
+    container.innerHTML = msgs.map(msg => `
+      <div class="chat-msg ${msg.sender === sender ? 'me' : 'other'}">
+        <div class="sender">${msg.sender === sender ? 'You' : msg.sender}</div>${msg.text}<span class="time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
       </div>
-    `;
-    document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
-    document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
-    renderChat();
+    `).join('');
+    container.scrollTop = container.scrollHeight;
   }
 
-  // ============================================================
-  // 13. PACKING PAGE (Enhanced)
-  // ============================================================
-  function buildPacking() {
-    const page = document.getElementById('page-packing');
-    if (!page) return;
-    page.innerHTML = `
-      <div class="card"><h3><i class="fas fa-suitcase"></i> Packing Checklist</h3>
-        <div class="input-group">
-          <input type="text" id="packingInput" placeholder="Add custom item...">
-          <select id="packingType"><option value="personal">👤 Personal</option><option value="common">👥 Common</option><option value="electronics">🔌 Electronics</option></select>
-          <button id="addPackingBtn"><i class="fas fa-plus"></i> Add</button>
-        </div>
-        <div style="margin:12px 0;">
-          <button onclick="addPredefinedItems()" class="btn-purple" style="padding:6px 16px;border:none;border-radius:20px;color:#fff;font-weight:600;cursor:pointer;">📋 Add Common Items</button>
-        </div>
-        <div id="packingList"></div>
-      </div>
-    `;
-    document.getElementById('addPackingBtn').addEventListener('click', addPackingItem);
-    document.getElementById('packingInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addPackingItem(); });
-    renderPacking();
-    window.addPredefinedItems = addPredefinedItems;
-  }
-
-  function renderPacking() {
+  function updatePacking() {
     const container = document.getElementById('packingList');
     if (!container) return;
     const categories = appData.packing || { personal: [], common: [], electronics: [] };
@@ -951,28 +964,8 @@
     container.innerHTML = html;
   }
 
-  function addPredefinedItems() {
-    if (!appData.packing) appData.packing = { personal: [], common: [], electronics: [] };
-    const personal = ['Passport', 'Aadhar Card', 'Wallet', 'Sunglasses', 'Hat'];
-    const common = ['First Aid Kit', 'Umbrella', 'Water Bottle', 'Snacks', 'Power Bank'];
-    const electronics = ['Phone Charger', 'Camera', 'Laptop', 'Headphones', 'Adapter'];
-    const addItems = (category, items) => {
-      const current = appData.packing[category] || [];
-      const currentTexts = current.map(i => i.text);
-      items.forEach(text => {
-        if (!currentTexts.includes(text)) current.push({ text, done: false });
-      });
-      appData.packing[category] = current;
-    };
-    addItems('personal', personal);
-    addItems('common', common);
-    addItems('electronics', electronics);
-    renderPacking();
-    syncToFirebase();
-  }
-
   // ============================================================
-  // 14. CRUD OPERATIONS
+  // 10. CRUD OPERATIONS
   // ============================================================
   function addParticipant() {
     const input = document.getElementById('participantInput');
@@ -982,9 +975,9 @@
     if (appData.participants.includes(name)) { alert('Already exists.'); return; }
     appData.participants.push(name);
     input.value = '';
-    renderParticipants();
+    updateParticipants();
     updateSelects();
-    updateStatsUI();
+    updateStats();
     syncToFirebase();
     showNotification('👤 New Member', `${name} joined the trip!`, 'member-' + name);
   }
@@ -992,9 +985,9 @@
   function removeParticipant(name) {
     if (!confirm(`Remove ${name}?`)) return;
     appData.participants = (appData.participants || []).filter(p => p !== name);
-    renderParticipants();
+    updateParticipants();
     updateSelects();
-    updateStatsUI();
+    updateStats();
     syncToFirebase();
   }
 
@@ -1014,7 +1007,7 @@
     document.getElementById('placeLng').value = '';
     document.getElementById('placeDesc').value = '';
     if (tempMarker) { mapInstance.removeLayer(tempMarker); tempMarker = null; }
-    renderItineraryList();
+    updateItinerary();
     syncToFirebase();
     fetchWeather();
     showNotification('📍 New Place', `Added: ${name} to itinerary`, 'place-' + name);
@@ -1022,7 +1015,7 @@
 
   function removeItinerary(idx) {
     appData.itinerary.splice(idx, 1);
-    renderItineraryList();
+    updateItinerary();
     syncToFirebase();
     fetchWeather();
   }
@@ -1043,7 +1036,7 @@
       appData.expenses.push(newExp);
       document.getElementById('expDesc').value = '';
       document.getElementById('expAmount').value = '';
-      renderExpensesList();
+      updateExpenses();
       syncToFirebase();
       showNotification('💰 New Expense', `${desc}: ₹${amount.toFixed(2)} paid by ${paidBy}`, 'expense-' + newExp.id);
     };
@@ -1065,7 +1058,7 @@
   function removeExpense(idx) {
     if (!confirm('Remove this expense?')) return;
     appData.expenses.splice(idx, 1);
-    renderExpensesList();
+    updateExpenses();
     syncToFirebase();
   }
 
@@ -1093,7 +1086,7 @@
     if (!paidBy) { alert('Select who paid.'); return; }
     appData.expenses[editExpenseIdx] = { ...appData.expenses[editExpenseIdx], desc, amount, paidBy, category };
     closeEditModal();
-    renderExpensesList();
+    updateExpenses();
     syncToFirebase();
   }
 
@@ -1107,22 +1100,8 @@
     const newMsg = { sender, text, timestamp: Date.now() };
     appData.chatMessages.push(newMsg);
     input.value = '';
-    renderChat();
+    updateChat();
     syncToFirebase();
-  }
-
-  function renderChat() {
-    const container = document.getElementById('chatMessages');
-    if (!container) return;
-    const msgs = appData.chatMessages || [];
-    if (msgs.length === 0) { container.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">No messages yet.</div>'; return; }
-    const sender = localStorage.getItem('chatUser') || 'You';
-    container.innerHTML = msgs.map(msg => `
-      <div class="chat-msg ${msg.sender === sender ? 'me' : 'other'}">
-        <div class="sender">${msg.sender === sender ? 'You' : msg.sender}</div>${msg.text}<span class="time">${new Date(msg.timestamp).toLocaleTimeString()}</span>
-      </div>
-    `).join('');
-    container.scrollTop = container.scrollHeight;
   }
 
   function addPackingItem() {
@@ -1133,19 +1112,39 @@
     if (!appData.packing) appData.packing = { personal: [], common: [], electronics: [] };
     appData.packing[type].push({ text, done: false });
     input.value = '';
-    renderPacking();
+    updatePacking();
     syncToFirebase();
   }
 
   function togglePacking(type, idx) {
     appData.packing[type][idx].done = !appData.packing[type][idx].done;
-    renderPacking();
+    updatePacking();
     syncToFirebase();
   }
 
   function removePacking(type, idx) {
     appData.packing[type].splice(idx, 1);
-    renderPacking();
+    updatePacking();
+    syncToFirebase();
+  }
+
+  function addPredefinedItems() {
+    if (!appData.packing) appData.packing = { personal: [], common: [], electronics: [] };
+    const personal = ['Passport', 'Aadhar Card', 'Wallet', 'Sunglasses', 'Hat'];
+    const common = ['First Aid Kit', 'Umbrella', 'Water Bottle', 'Snacks', 'Power Bank'];
+    const electronics = ['Phone Charger', 'Camera', 'Laptop', 'Headphones', 'Adapter'];
+    const addItems = (category, items) => {
+      const current = appData.packing[category] || [];
+      const currentTexts = current.map(i => i.text);
+      items.forEach(text => {
+        if (!currentTexts.includes(text)) current.push({ text, done: false });
+      });
+      appData.packing[category] = current;
+    };
+    addItems('personal', personal);
+    addItems('common', common);
+    addItems('electronics', electronics);
+    updatePacking();
     syncToFirebase();
   }
 
@@ -1192,7 +1191,7 @@
   }
 
   // ============================================================
-  // 15. MAP & NAVIGATION
+  // 11. MAP & NAVIGATION
   // ============================================================
   function initMap() {
     if (mapInstance) { mapInstance.remove(); mapInstance = null; }
@@ -1322,7 +1321,7 @@
   }
 
   // ============================================================
-  // 16. SETTLEMENT & PDF
+  // 12. SETTLEMENT
   // ============================================================
   function calculateSettlements() {
     const container = document.getElementById('settlementTransactions');
@@ -1354,13 +1353,80 @@
     container.innerHTML = transactions.length === 0 ? '<div style="color:var(--success);font-weight:600;">✅ All settled!</div>' : transactions.map(t => `<div class="settlement-item"><div><span class="from">${t.from}</span> <i class="fas fa-arrow-right" style="color:var(--text-muted);margin:0 12px;"></i> <span class="to">${t.to}</span></div><div class="s-amount">₹${t.amount.toFixed(2)}</div></div>`).join('');
   }
 
+  // ============================================================
+  // 13. PDF EXPORT (Full Implementation)
+  // ============================================================
   function exportPDF() {
-    // Simplified version - same as previous
-    alert('PDF export is available in the full version. Use the Download PDF button in Settle tab.');
+    const participants = appData.participants || [];
+    const expenses = appData.expenses || [];
+    if (participants.length === 0 || expenses.length === 0) { alert('Add participants and expenses first.'); return; }
+    if (typeof html2canvas === 'undefined' || (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined')) { alert('PDF libraries not loaded.'); return; }
+
+    const totalPaid = {};
+    participants.forEach(p => totalPaid[p] = 0);
+    expenses.forEach(exp => { const amt = parseFloat(exp.amount); if (totalPaid[exp.paidBy] !== undefined) totalPaid[exp.paidBy] += amt; });
+    const totalCost = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
+    const share = participants.length > 0 ? totalCost / participants.length : 0;
+    const netBalance = {};
+    participants.forEach(p => { netBalance[p] = totalPaid[p] - share; });
+
+    let payers = participants.filter(p => netBalance[p] < 0).map(p => ({ name: p, amount: -netBalance[p] }));
+    let receivers = participants.filter(p => netBalance[p] > 0).map(p => ({ name: p, amount: netBalance[p] }));
+    let transactions = [];
+    let i = 0, j = 0;
+    while (i < payers.length && j < receivers.length) {
+      let payer = payers[i], receiver = receivers[j];
+      let settleAmt = Math.min(payer.amount, receiver.amount);
+      if (settleAmt > 0.01) { transactions.push({ from: payer.name, to: receiver.name, amount: settleAmt }); }
+      payer.amount -= settleAmt; receiver.amount -= settleAmt;
+      if (payer.amount < 0.01) i++;
+      if (receiver.amount < 0.01) j++;
+    }
+    const currency = '₹';
+    const rows = expenses.map((exp, idx) => `
+      <tr><td style="padding:6px 10px;border:1px solid #d1d5db;text-align:center;">${idx+1}</td><td style="padding:6px 10px;border:1px solid #d1d5db;">${exp.desc}</td><td style="padding:6px 10px;border:1px solid #d1d5db;text-align:right;">${currency}${parseFloat(exp.amount).toFixed(2)}</td><td style="padding:6px 10px;border:1px solid #d1d5db;">${exp.paidBy}</td><td style="padding:6px 10px;border:1px solid #d1d5db;">${exp.category||'Other'}</td></tr>
+    `).join('');
+    const balanceRows = participants.map(p => {
+      const bal = netBalance[p];
+      return `<tr><td style="padding:6px 10px;border:1px solid #d1d5db;">${p}</td><td style="padding:6px 10px;border:1px solid #d1d5db;text-align:right;">${currency}${totalPaid[p].toFixed(2)}</td><td style="padding:6px 10px;border:1px solid #d1d5db;text-align:right;color:${bal>=0?'#16a34a':'#dc2626'};font-weight:600;">${bal>=0?'+':''}${currency}${bal.toFixed(2)}</td></tr>`;
+    }).join('');
+    const txnRows = transactions.map(t => `
+      <tr><td style="padding:6px 10px;border:1px solid #d1d5db;">${t.from}</td><td style="padding:6px 10px;border:1px solid #d1d5db;">${t.to}</td><td style="padding:6px 10px;border:1px solid #d1d5db;text-align:right;">${currency}${t.amount.toFixed(2)}</td></tr>
+    `).join('');
+
+    const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Settlement Report</title><style>body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:30px;background:#fff;color:#1e293b;}.container{max-width:700px;margin:0 auto;}h1{text-align:center;font-size:22px;}.subtitle{text-align:center;color:#64748b;font-size:14px;margin-bottom:24px;}.section{margin:20px 0;}.section-title{font-size:16px;font-weight:600;border-bottom:2px solid #3b82f6;padding-bottom:4px;margin-bottom:10px;}table{width:100%;border-collapse:collapse;font-size:13px;}th{background:#f1f5f9;padding:6px 10px;border:1px solid #d1d5db;text-align:left;font-weight:600;}td{padding:6px 10px;border:1px solid #d1d5db;}.summary-box{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:12px 0;}.summary-item{background:#f8fafc;padding:10px 20px;border-radius:8px;text-align:center;border:1px solid #e2e8f0;flex:1;min-width:100px;}.summary-item .label{font-size:12px;color:#64748b;}.summary-item .value{font-size:20px;font-weight:700;color:#0f172a;}.participant-badge{display:inline-block;background:#e2e8f0;padding:2px 12px;border-radius:20px;font-size:13px;margin:2px;}.footer{text-align:center;color:#94a3b8;font-size:11px;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:12px;}</style></head><body><div class="container"><h1>📊 Trip Settlement Report</h1><div class="subtitle">${appData.tripName} — ${appData.tripDate}</div><div class="section"><div class="section-title">👥 Participants</div><div style="display:flex;flex-wrap:wrap;gap:4px;">${participants.map(p => `<span class="participant-badge">${p}</span>`).join('')}</div></div><div class="section"><div class="section-title">💰 Shared Expenses</div><table><thead><tr><th style="width:40px;text-align:center;">#</th><th>Description</th><th style="text-align:right;">Amount</th><th>Paid By</th><th>Category</th></tr></thead><tbody>${rows || '<tr><td colspan="5" style="text-align:center;">No expenses recorded.</td></tr>'}</tbody></table></div><div class="section"><div class="section-title">📈 Summary</div><div class="summary-box"><div class="summary-item"><div class="label">Total Cost</div><div class="value">${currency}${totalCost.toFixed(2)}</div></div><div class="summary-item"><div class="label">Per Person Share</div><div class="value">${currency}${share.toFixed(2)}</div></div></div><table><thead><tr><th>Participant</th><th style="text-align:right;">Total Paid</th><th style="text-align:right;">Net Balance</th></tr></thead><tbody>${balanceRows}</tbody></table></div><div class="section"><div class="section-title">🔄 Settlement Transactions</div>${transactions.length > 0 ? `<table><thead><tr><th>From</th><th>To</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${txnRows}</tbody></table><div style="margin-top:6px;font-size:13px;color:#475569;">Total transactions: ${transactions.length}</div>` : `<p style="color:#16a34a;font-weight:600;">✅ All settled!</p>`}</div><div class="footer">This settlement was calculated by Trip Planner. All amounts are rounded to 2 decimal places.</div></div></body></html>`;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.style.position = 'fixed';
+    tempDiv.style.left = '-9999px';
+    tempDiv.style.top = '0';
+    tempDiv.style.width = '750px';
+    tempDiv.style.background = '#ffffff';
+    tempDiv.style.zIndex = '9999';
+    tempDiv.style.padding = '20px';
+    tempDiv.innerHTML = htmlContent;
+    document.body.appendChild(tempDiv);
+
+    html2canvas(tempDiv, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, width: 750, height: tempDiv.scrollHeight })
+      .then(canvas => {
+        let jsPDFConstructor = null;
+        if (window.jspdf && typeof window.jspdf.jsPDF === 'function') jsPDFConstructor = window.jspdf.jsPDF;
+        else if (window.jsPDF && typeof window.jsPDF === 'function') jsPDFConstructor = window.jsPDF;
+        else if (typeof jsPDF === 'function') jsPDFConstructor = jsPDF;
+        if (!jsPDFConstructor) { document.body.removeChild(tempDiv); alert('jsPDF not found.'); return; }
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const doc = new jsPDFConstructor('p', 'mm', 'a4');
+        const pdfWidth = 210;
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        doc.save(`Settlement_${appData.tripName || 'Trip'}.pdf`);
+        document.body.removeChild(tempDiv);
+      })
+      .catch(err => { console.error(err); document.body.removeChild(tempDiv); alert('PDF generation failed: ' + err.message); });
   }
 
   // ============================================================
-  // 17. WEATHER
+  // 14. WEATHER
   // ============================================================
   function fetchWeather() {
     const container = document.getElementById('weatherContainer');
@@ -1392,7 +1458,7 @@
   }
 
   // ============================================================
-  // 18. CHART
+  // 15. CHART
   // ============================================================
   function updateChart() {
     const canvas = document.getElementById('expenseChart');
@@ -1417,7 +1483,7 @@
   }
 
   // ============================================================
-  // 19. NAVIGATION (Sidebar + Sliding Tabs)
+  // 16. NAVIGATION (Sidebar + Sliding Tabs)
   // ============================================================
   function switchPage(pageId) {
     // Update sidebar
@@ -1430,15 +1496,26 @@
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const target = document.getElementById('page-' + pageId);
     if (target) target.classList.add('active');
-    // Build content if needed
-    if (pageId === 'itinerary' && !document.getElementById('map')) buildItinerary();
-    if (pageId === 'expenses') renderExpensesList();
+    // Build content if needed (lazy load)
+    if (pageId === 'itinerary') {
+      if (!document.getElementById('map')) buildItinerary();
+      else setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 100);
+    }
+    if (pageId === 'expenses' && !document.getElementById('expenseList')) buildExpenses();
+    if (pageId === 'settlements' && !document.getElementById('settlementTransactions')) buildSettlements();
+    if (pageId === 'weather' && !document.getElementById('weatherContainer')) buildWeather();
+    if (pageId === 'chart' && !document.getElementById('expenseChart')) buildChart();
+    if (pageId === 'chat' && !document.getElementById('chatMessages')) buildChat();
+    if (pageId === 'packing' && !document.getElementById('packingList')) buildPacking();
+    if (pageId === 'dashboard' && !document.getElementById('participantChips')) buildDashboard();
+    // Refresh dynamic content
+    if (pageId === 'expenses') updateExpenses();
     if (pageId === 'settlements') calculateSettlements();
     if (pageId === 'weather') fetchWeather();
     if (pageId === 'chart') setTimeout(updateChart, 200);
-    if (pageId === 'chat') renderChat();
-    if (pageId === 'packing') renderPacking();
-    if (pageId === 'dashboard') buildDashboard();
+    if (pageId === 'chat') updateChat();
+    if (pageId === 'packing') updatePacking();
+    if (pageId === 'dashboard') updateStats();
     // Close mobile sidebar
     document.getElementById('sidebar').classList.remove('open');
   }
@@ -1465,29 +1542,55 @@
   });
 
   // ============================================================
-  // 20. INITIALIZE
+  // 17. DELEGATION LISTENERS (for remove buttons)
+  // ============================================================
+  // We attach them to the parent containers (they may not exist initially, so we use document)
+  document.addEventListener('click', function(e) {
+    // Remove Participant
+    const partTarget = e.target.closest('[data-action="removePart"]');
+    if (partTarget) {
+      const name = partTarget.dataset.name;
+      if (name) removeParticipant(name);
+    }
+    // Remove Itinerary
+    const itinTarget = e.target.closest('[data-action="removeItin"]');
+    if (itinTarget) {
+      const idx = parseInt(itinTarget.dataset.idx);
+      if (!isNaN(idx)) removeItinerary(idx);
+    }
+    // Remove Expense
+    const expTarget = e.target.closest('[data-action="removeExpense"]');
+    if (expTarget) {
+      const idx = parseInt(expTarget.dataset.idx);
+      if (!isNaN(idx)) removeExpense(idx);
+    }
+  });
+
+  // ============================================================
+  // 18. INITIALIZE
   // ============================================================
   loadTheme();
+
+  // Auto-login without flicker: check immediately
   const savedPin = localStorage.getItem('tripPin');
   if (savedPin) {
-    // Try to join automatically
+    // We'll try to join as soon as DOM is ready and auth card is rendered.
+    // Use a small timeout to allow DOM to settle, but not 300ms.
     setTimeout(() => {
-      // We need to trigger join after DOM ready
-      // Since we use the same functions, we can just call joinTrip if pinInput exists
       const pinInput = document.getElementById('pinInput');
       if (pinInput) {
         pinInput.value = savedPin;
         joinTrip();
       } else {
-        // If auth card not yet rendered, we can set a global var and check later
-        // Better: just show auth card and prefill
+        // If auth card not yet rendered, show it and then join
         showAuthCard();
         const pinInput2 = document.getElementById('pinInput');
-        if (pinInput2) pinInput2.value = savedPin;
-        // Auto click join
-        setTimeout(() => document.getElementById('joinTripBtn')?.click(), 300);
+        if (pinInput2) {
+          pinInput2.value = savedPin;
+          setTimeout(() => document.getElementById('joinTripBtn')?.click(), 50);
+        }
       }
-    }, 300);
+    }, 50);
   } else {
     showAuthCard();
   }
