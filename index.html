@@ -1,4 +1,4 @@
-<!-- Trip Planner - All Issues Fixed (Delete, Map, PDF, Sync, Auto-Login) -->
+<!-- Trip Planner - All Features + OpenRouteService (ORS) Routing -->
 <!DOCTYPE html>
 <html lang="ml" data-theme="light">
 <head>
@@ -19,6 +19,9 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+  <!-- ====== ORS Plugin for Leaflet Routing Machine ====== -->
+  <script src="https://unpkg.com/lrm-openrouteservice@1.0.0/dist/lrm-openrouteservice.js"></script>
 
   <!-- PDF, Chart, FontAwesome -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -565,19 +568,16 @@
       if (oldData.tripName !== newData.tripName || oldData.tripDate !== newData.tripDate) {
         showNotification('✈️ Trip Updated', `${newData.tripName} - ${newData.tripDate}`, 'trip-update');
       }
-      // Update appData
       appData = newData;
       localStorage.setItem('tripData', JSON.stringify(appData));
-      // Granular updates (no full re-render)
       updateUI();
     }, (error) => console.error('Listener error:', error));
   }
 
   // ============================================================
-  // 5. GRANULAR UI UPDATE (instead of reRenderAll)
+  // 5. GRANULAR UI UPDATE
   // ============================================================
   function updateUI() {
-    // Only update visible parts to avoid input reset
     updateParticipants();
     updateItinerary();
     updateExpenses();
@@ -586,9 +586,7 @@
     updateChat();
     updatePacking();
     updateChart();
-    // Header status
     document.getElementById('tripStatus').innerHTML = `📅 ${appData.tripDate} | ${appData.tripName}`;
-    // Map markers if map exists
     if (mapInstance) updateMapMarkers();
   }
 
@@ -632,7 +630,6 @@
       </div>
       <div class="card"><h3><i class="fas fa-info-circle"></i> Quick Start</h3><p style="color:var(--text-muted);">Create a new trip or join an existing one to start planning.</p></div>
     `;
-    // Bind events
     document.getElementById('joinTripBtn').addEventListener('click', joinTrip);
     document.getElementById('newTripBtn').addEventListener('click', createNewTrip);
     document.getElementById('pinInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('joinTripBtn').click(); });
@@ -723,14 +720,12 @@
       </div>
       <div class="card"><h3><i class="fas fa-coins"></i> Budget Tracker</h3><div class="input-group"><input type="number" id="budgetInput" placeholder="Set budget (₹)" min="0" step="100"><button id="setBudgetBtn"><i class="fas fa-check"></i> Set Budget</button></div><div id="budgetDisplay"><div style="color:var(--text-muted);">Set a budget to track your spending.</div></div></div>
     `;
-    // Attach listeners
     document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
     document.getElementById('participantInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addParticipant(); });
     document.getElementById('updateTripBtn').addEventListener('click', updateTrip);
     document.getElementById('startNewTripBtn').addEventListener('click', startNewTrip);
     document.getElementById('trackLocationBtn').addEventListener('click', startLiveTracking);
     document.getElementById('setBudgetBtn').addEventListener('click', setBudget);
-    // Render initial data
     updateParticipants();
     updateStats();
     updateBudgetUI();
@@ -753,7 +748,6 @@
     document.getElementById('searchPlaceBtn').addEventListener('click', searchPlace);
     document.getElementById('placeName').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchPlace(); });
     document.getElementById('navToggleBtn').addEventListener('click', toggleNavigation);
-    // Render itinerary
     updateItinerary();
     initMap();
   }
@@ -771,7 +765,6 @@
       <div class="card"><h3><i class="fas fa-list-ul"></i> All Expenses</h3><div id="expenseList"></div></div>
     `;
     document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
-    // Render expenses
     updateExpenses();
   }
 
@@ -1186,12 +1179,11 @@
     appData = { tripName: 'New Trip', tripDate: new Date().toISOString().split('T')[0], participants: [], itinerary: [], expenses: [], packing: { personal: [], common: [], electronics: [] }, chatMessages: [], budget: 0, createdAt: Date.now() };
     document.getElementById('tripStatus').innerHTML = '📅 No trip';
     showAuthCard();
-    // Clear other pages
     ['page-itinerary','page-expenses','page-settlements','page-weather','page-chart','page-chat','page-packing'].forEach(id => document.getElementById(id).innerHTML = '');
   }
 
   // ============================================================
-  // 11. MAP & NAVIGATION
+  // 11. MAP & NAVIGATION (with ORS Router)
   // ============================================================
   function initMap() {
     if (mapInstance) { mapInstance.remove(); mapInstance = null; }
@@ -1210,13 +1202,18 @@
     updateMapMarkers();
   }
 
+  // ===== UPDATED: ORS Router =====
   function updateMapMarkers() {
     if (!mapInstance) return;
     mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
     mapMarkers = [];
     if (routingControl) { mapInstance.removeControl(routingControl); routingControl = null; }
     const data = appData.itinerary || [];
-    if (data.length === 0) { mapInstance.setView([10.089, 77.059], 10); document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route.</span>'; return; }
+    if (data.length === 0) {
+      mapInstance.setView([10.089, 77.059], 10);
+      document.getElementById('navInstructions').innerHTML = '<span class="placeholder">Add places to see route.</span>';
+      return;
+    }
     const waypoints = [], latlngs = [];
     data.forEach(item => {
       const lat = parseFloat(item.lat), lng = parseFloat(item.lng);
@@ -1230,7 +1227,23 @@
     if (latlngs.length === 1) mapInstance.setView(latlngs[0], 12);
     else if (latlngs.length > 1) {
       try {
-        routingControl = L.Routing.control({ waypoints: waypoints, routeWhileDragging: false, showAlternatives: false, fitSelectedRoutes: true, addWaypoints: false, draggableWaypoints: false, show: false, createMarker: function() { return null; }, lineOptions: { styles: [{ color: '#3b82f6', weight: 4, opacity: 0.8 }] }, router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }) }).addTo(mapInstance);
+        routingControl = L.Routing.control({
+          waypoints: waypoints,
+          routeWhileDragging: false,
+          showAlternatives: false,
+          fitSelectedRoutes: true,
+          addWaypoints: false,
+          draggableWaypoints: false,
+          show: false,
+          createMarker: function() { return null; },
+          lineOptions: { styles: [{ color: '#3b82f6', weight: 4, opacity: 0.8 }] },
+          // ----- ORS ROUTER -----
+          router: L.Routing.openRouteService({
+            apiKey: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjgxNWQ4MTc3NWI1MDQ0NDg4ZWQ3NDVlZDk3MDJmZDc4IiwiaCI6Im11cm11cjY0In0=',
+            profile: 'driving-car'  // or 'foot-walking', 'cycling-regular'
+          })
+        }).addTo(mapInstance);
+
         routingControl.on('routesfound', function(e) {
           const routes = e.routes;
           if (!routes || routes.length === 0) { document.getElementById('navInstructions').innerHTML = '<span class="placeholder">No route found.</span>'; return; }
@@ -1247,7 +1260,9 @@
           });
           document.getElementById('navInstructions').innerHTML = html || '<span class="placeholder">No instructions available.</span>';
         });
-        routingControl.on('routingerror', function(e) { document.getElementById('navInstructions').innerHTML = '<span style="color:var(--danger);">❌ Could not calculate route.</span>'; });
+        routingControl.on('routingerror', function(e) {
+          document.getElementById('navInstructions').innerHTML = '<span style="color:var(--danger);">❌ Could not calculate route. Check API key or network.</span>';
+        });
         setTimeout(() => { if (routingControl) routingControl.route(); }, 500);
       } catch (e) {
         console.error('Routing error:', e);
@@ -1354,7 +1369,7 @@
   }
 
   // ============================================================
-  // 13. PDF EXPORT (Full Implementation)
+  // 13. PDF EXPORT
   // ============================================================
   function exportPDF() {
     const participants = appData.participants || [];
@@ -1486,17 +1501,13 @@
   // 16. NAVIGATION (Sidebar + Sliding Tabs)
   // ============================================================
   function switchPage(pageId) {
-    // Update sidebar
     document.querySelectorAll('.sidebar .nav-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`.sidebar .nav-item[data-page="${pageId}"]`)?.classList.add('active');
-    // Update sliding tabs
     document.querySelectorAll('.sliding-tabs button').forEach(el => el.classList.remove('active'));
     document.querySelector(`.sliding-tabs button[data-page="${pageId}"]`)?.classList.add('active');
-    // Show page
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const target = document.getElementById('page-' + pageId);
     if (target) target.classList.add('active');
-    // Build content if needed (lazy load)
     if (pageId === 'itinerary') {
       if (!document.getElementById('map')) buildItinerary();
       else setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 100);
@@ -1508,7 +1519,6 @@
     if (pageId === 'chat' && !document.getElementById('chatMessages')) buildChat();
     if (pageId === 'packing' && !document.getElementById('packingList')) buildPacking();
     if (pageId === 'dashboard' && !document.getElementById('participantChips')) buildDashboard();
-    // Refresh dynamic content
     if (pageId === 'expenses') updateExpenses();
     if (pageId === 'settlements') calculateSettlements();
     if (pageId === 'weather') fetchWeather();
@@ -1516,11 +1526,9 @@
     if (pageId === 'chat') updateChat();
     if (pageId === 'packing') updatePacking();
     if (pageId === 'dashboard') updateStats();
-    // Close mobile sidebar
     document.getElementById('sidebar').classList.remove('open');
   }
 
-  // Sidebar clicks
   document.querySelectorAll('.sidebar .nav-item').forEach(item => {
     item.addEventListener('click', function() {
       const page = this.dataset.page;
@@ -1528,7 +1536,6 @@
     });
   });
 
-  // Sliding tabs clicks
   document.querySelectorAll('.sliding-tabs button').forEach(item => {
     item.addEventListener('click', function() {
       const page = this.dataset.page;
@@ -1536,7 +1543,6 @@
     });
   });
 
-  // Mobile menu toggle
   document.getElementById('menuToggle').addEventListener('click', function() {
     document.getElementById('sidebar').classList.toggle('open');
   });
@@ -1544,21 +1550,17 @@
   // ============================================================
   // 17. DELEGATION LISTENERS (for remove buttons)
   // ============================================================
-  // We attach them to the parent containers (they may not exist initially, so we use document)
   document.addEventListener('click', function(e) {
-    // Remove Participant
     const partTarget = e.target.closest('[data-action="removePart"]');
     if (partTarget) {
       const name = partTarget.dataset.name;
       if (name) removeParticipant(name);
     }
-    // Remove Itinerary
     const itinTarget = e.target.closest('[data-action="removeItin"]');
     if (itinTarget) {
       const idx = parseInt(itinTarget.dataset.idx);
       if (!isNaN(idx)) removeItinerary(idx);
     }
-    // Remove Expense
     const expTarget = e.target.closest('[data-action="removeExpense"]');
     if (expTarget) {
       const idx = parseInt(expTarget.dataset.idx);
@@ -1571,18 +1573,14 @@
   // ============================================================
   loadTheme();
 
-  // Auto-login without flicker: check immediately
   const savedPin = localStorage.getItem('tripPin');
   if (savedPin) {
-    // We'll try to join as soon as DOM is ready and auth card is rendered.
-    // Use a small timeout to allow DOM to settle, but not 300ms.
     setTimeout(() => {
       const pinInput = document.getElementById('pinInput');
       if (pinInput) {
         pinInput.value = savedPin;
         joinTrip();
       } else {
-        // If auth card not yet rendered, show it and then join
         showAuthCard();
         const pinInput2 = document.getElementById('pinInput');
         if (pinInput2) {
@@ -1595,7 +1593,6 @@
     showAuthCard();
   }
 
-  // Update notification status
   if ('Notification' in window) {
     if (Notification.permission === 'granted') updateNotifStatus(true, 'Enabled ✅');
     else if (Notification.permission === 'denied') updateNotifStatus(false, 'Blocked ❌');
@@ -1604,12 +1601,10 @@
     updateNotifStatus(false, 'Not supported');
   }
 
-  // Service Worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(() => console.log('SW registered.')).catch(err => console.log('SW registration failed:', err));
   }
 
-  // Expose functions globally
   window.addParticipant = addParticipant;
   window.removeParticipant = removeParticipant;
   window.removeItinerary = removeItinerary;
