@@ -1,4 +1,4 @@
-<!-- Trip Planner - All Features + OpenRouteService (ORS) Routing -->
+<!-- Trip Planner - All Features + Toast Notifications -->
 <!DOCTYPE html>
 <html lang="ml" data-theme="light">
 <head>
@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 
-  <!-- ====== ORS Plugin for Leaflet Routing Machine ====== -->
+  <!-- ORS Plugin -->
   <script src="https://unpkg.com/lrm-openrouteservice@1.0.0/dist/lrm-openrouteservice.js"></script>
 
   <!-- PDF, Chart, FontAwesome -->
@@ -345,6 +345,30 @@
     .notif-banner .status.enabled { color:var(--success); }
     .notif-banner .status.disabled { color:var(--danger); }
 
+    /* ========== TOAST NOTIFICATION ========== */
+    .toast-message {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      padding: 12px 28px;
+      border-radius: 30px;
+      box-shadow: 0 8px 32px var(--shadow-color);
+      border: 1px solid var(--border-color);
+      z-index: 99999;
+      font-weight: 500;
+      font-size: 15px;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      opacity: 0;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .toast-message.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
     /* ========== RESPONSIVE ========== */
     @media (max-width: 768px) {
       .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); width: 260px; height: 100vh; transition: transform 0.3s; }
@@ -355,6 +379,7 @@
       .app-header { flex-direction: column; align-items: stretch; text-align: center; }
       .header-actions { justify-content: center; }
       .input-group { flex-direction: column; align-items: stretch; }
+      .toast-message { white-space: normal; max-width: 90%; }
     }
 
     @media (min-width: 769px) {
@@ -478,7 +503,34 @@
   };
 
   // ============================================================
-  // 2. NOTIFICATION SYSTEM
+  // 2. TOAST NOTIFICATION
+  // ============================================================
+  function showToast(message) {
+    // Remove existing toast if any
+    const existing = document.querySelector('.toast-message');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'toast-message';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // Trigger show after a tiny delay for the transition
+    setTimeout(() => {
+      toast.classList.add('show');
+    }, 10);
+
+    // Auto hide after 2.5 seconds
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => {
+        if (toast.parentNode) toast.remove();
+      }, 400);
+    }, 2500);
+  }
+
+  // ============================================================
+  // 3. NOTIFICATION SYSTEM
   // ============================================================
   function requestNotificationPermission() {
     if (!('Notification' in window)) { updateNotifStatus(false, 'Not supported'); return; }
@@ -512,7 +564,7 @@
   }
 
   // ============================================================
-  // 3. HELPERS & SYNC
+  // 4. HELPERS & SYNC
   // ============================================================
   function generateId() { return Date.now() + Math.random().toString(36); }
   function updateSyncStatus(msg, err = false) {
@@ -531,7 +583,7 @@
   }
 
   // ============================================================
-  // 4. REAL-TIME LISTENER (Granular Updates)
+  // 5. REAL-TIME LISTENER
   // ============================================================
   function startRealtimeListener(pin) {
     if (isSyncing) return;
@@ -550,7 +602,6 @@
         chatMessages: remoteData.chatMessages || [],
         budget: remoteData.budget || 0
       };
-      // Detect changes for notifications
       if (oldData.expenses && newData.expenses && newData.expenses.length > oldData.expenses.length) {
         const newExp = newData.expenses[newData.expenses.length - 1];
         showNotification('💰 New Expense', `${newExp.desc}: ₹${newExp.amount.toFixed(2)} paid by ${newExp.paidBy}`, 'expense-' + newExp.id);
@@ -575,7 +626,7 @@
   }
 
   // ============================================================
-  // 5. GRANULAR UI UPDATE
+  // 6. GRANULAR UI UPDATE
   // ============================================================
   function updateUI() {
     updateParticipants();
@@ -591,7 +642,7 @@
   }
 
   // ============================================================
-  // 6. THEME
+  // 7. THEME
   // ============================================================
   function toggleTheme() {
     currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -610,7 +661,7 @@
   }
 
   // ============================================================
-  // 7. AUTH (Integrated into Dashboard)
+  // 8. AUTH (Integrated into Dashboard)
   // ============================================================
   function showAuthCard() {
     const page = document.getElementById('page-dashboard');
@@ -700,7 +751,7 @@
   function shareViaSMS(pin) { const url = window.location.href; const msg = encodeURIComponent(`Trip Planner: Join my trip with PIN: ${pin}\n${url}`); if (navigator.share) { navigator.share({ title: 'Trip Planner', text: `Join my trip with PIN: ${pin}\n${url}` }); } else { window.location.href = `sms:?body=${msg}`; } }
 
   // ============================================================
-  // 8. RENDER FUNCTIONS (Page Builders)
+  // 9. RENDER FUNCTIONS (Page Builders)
   // ============================================================
   function buildDashboard() {
     const page = document.getElementById('page-dashboard');
@@ -834,7 +885,7 @@
   }
 
   // ============================================================
-  // 9. UPDATE FUNCTIONS (Granular)
+  // 10. UPDATE FUNCTIONS (Granular)
   // ============================================================
   function updateParticipants() {
     const c = document.getElementById('participantChips');
@@ -958,7 +1009,7 @@
   }
 
   // ============================================================
-  // 10. CRUD OPERATIONS
+  // 11. CRUD OPERATIONS (with Toast)
   // ============================================================
   function addParticipant() {
     const input = document.getElementById('participantInput');
@@ -972,6 +1023,7 @@
     updateSelects();
     updateStats();
     syncToFirebase();
+    showToast('✅ Participant added: ' + name);
     showNotification('👤 New Member', `${name} joined the trip!`, 'member-' + name);
   }
 
@@ -982,6 +1034,7 @@
     updateSelects();
     updateStats();
     syncToFirebase();
+    showToast('🗑️ Removed: ' + name);
   }
 
   function addPlace() {
@@ -1003,6 +1056,7 @@
     updateItinerary();
     syncToFirebase();
     fetchWeather();
+    showToast('📍 Place added: ' + name);
     showNotification('📍 New Place', `Added: ${name} to itinerary`, 'place-' + name);
   }
 
@@ -1011,6 +1065,7 @@
     updateItinerary();
     syncToFirebase();
     fetchWeather();
+    showToast('🗑️ Place removed');
   }
 
   function addExpense() {
@@ -1031,6 +1086,7 @@
       document.getElementById('expAmount').value = '';
       updateExpenses();
       syncToFirebase();
+      showToast('💰 Expense added: ' + desc);
       showNotification('💰 New Expense', `${desc}: ₹${amount.toFixed(2)} paid by ${paidBy}`, 'expense-' + newExp.id);
     };
     if (file) {
@@ -1053,6 +1109,97 @@
     appData.expenses.splice(idx, 1);
     updateExpenses();
     syncToFirebase();
+    showToast('🗑️ Expense removed');
+  }
+
+  function addPackingItem() {
+    const input = document.getElementById('packingInput');
+    const text = input.value.trim();
+    const type = document.getElementById('packingType').value;
+    if (!text) return;
+    if (!appData.packing) appData.packing = { personal: [], common: [], electronics: [] };
+    appData.packing[type].push({ text, done: false });
+    input.value = '';
+    updatePacking();
+    syncToFirebase();
+    showToast('📦 Packing item added');
+  }
+
+  function togglePacking(type, idx) {
+    appData.packing[type][idx].done = !appData.packing[type][idx].done;
+    updatePacking();
+    syncToFirebase();
+  }
+
+  function removePacking(type, idx) {
+    appData.packing[type].splice(idx, 1);
+    updatePacking();
+    syncToFirebase();
+    showToast('🗑️ Item removed');
+  }
+
+  function addPredefinedItems() {
+    if (!appData.packing) appData.packing = { personal: [], common: [], electronics: [] };
+    const personal = ['Passport', 'Aadhar Card', 'Wallet', 'Sunglasses', 'Hat'];
+    const common = ['First Aid Kit', 'Umbrella', 'Water Bottle', 'Snacks', 'Power Bank'];
+    const electronics = ['Phone Charger', 'Camera', 'Laptop', 'Headphones', 'Adapter'];
+    const addItems = (category, items) => {
+      const current = appData.packing[category] || [];
+      const currentTexts = current.map(i => i.text);
+      items.forEach(text => {
+        if (!currentTexts.includes(text)) current.push({ text, done: false });
+      });
+      appData.packing[category] = current;
+    };
+    addItems('personal', personal);
+    addItems('common', common);
+    addItems('electronics', electronics);
+    updatePacking();
+    syncToFirebase();
+    showToast('📋 Common items added');
+  }
+
+  function setBudget() {
+    const input = document.getElementById('budgetInput');
+    const val = parseFloat(input.value);
+    if (isNaN(val) || val < 0) { alert('Enter a valid budget.'); return; }
+    appData.budget = val;
+    input.value = '';
+    updateBudgetUI();
+    syncToFirebase();
+    showToast('💰 Budget set: ₹' + val.toFixed(2));
+    showNotification('💰 Budget Set', `Trip budget: ₹${val.toFixed(2)}`, 'budget-set');
+  }
+
+  function handleReceiptChange() {
+    const fileInput = document.getElementById('expReceipt');
+    const removeBtn = document.getElementById('removeReceiptBtn');
+    if (fileInput.files.length > 0) { removeBtn.style.display = 'inline-block'; } else { removeBtn.style.display = 'none'; }
+  }
+
+  function removeReceipt() { document.getElementById('expReceipt').value = ''; document.getElementById('removeReceiptBtn').style.display = 'none'; }
+
+  function updateTrip() {
+    const name = document.getElementById('tripName').value.trim();
+    const date = document.getElementById('tripDate').value;
+    if (name) appData.tripName = name;
+    appData.tripDate = date;
+    document.getElementById('tripStatus').innerHTML = `📅 ${date} | ${appData.tripName}`;
+    syncToFirebase();
+    showToast('✈️ Trip updated');
+    showNotification('✈️ Trip Updated', `${name} - ${date}`, 'trip-update');
+  }
+
+  function startNewTrip() {
+    if (!confirm('Clear all data and start a new trip?')) return;
+    if (isSyncing) { database.ref('trips/' + currentTripPin).off(); isSyncing = false; }
+    localStorage.removeItem('tripData');
+    localStorage.removeItem('tripPin');
+    currentTripPin = null;
+    appData = { tripName: 'New Trip', tripDate: new Date().toISOString().split('T')[0], participants: [], itinerary: [], expenses: [], packing: { personal: [], common: [], electronics: [] }, chatMessages: [], budget: 0, createdAt: Date.now() };
+    document.getElementById('tripStatus').innerHTML = '📅 No trip';
+    showAuthCard();
+    ['page-itinerary','page-expenses','page-settlements','page-weather','page-chart','page-chat','page-packing'].forEach(id => document.getElementById(id).innerHTML = '');
   }
 
   function openEditModal(idx) {
@@ -1081,6 +1228,7 @@
     closeEditModal();
     updateExpenses();
     syncToFirebase();
+    showToast('✏️ Expense updated');
   }
 
   function sendChatMessage() {
@@ -1095,95 +1243,11 @@
     input.value = '';
     updateChat();
     syncToFirebase();
-  }
-
-  function addPackingItem() {
-    const input = document.getElementById('packingInput');
-    const text = input.value.trim();
-    const type = document.getElementById('packingType').value;
-    if (!text) return;
-    if (!appData.packing) appData.packing = { personal: [], common: [], electronics: [] };
-    appData.packing[type].push({ text, done: false });
-    input.value = '';
-    updatePacking();
-    syncToFirebase();
-  }
-
-  function togglePacking(type, idx) {
-    appData.packing[type][idx].done = !appData.packing[type][idx].done;
-    updatePacking();
-    syncToFirebase();
-  }
-
-  function removePacking(type, idx) {
-    appData.packing[type].splice(idx, 1);
-    updatePacking();
-    syncToFirebase();
-  }
-
-  function addPredefinedItems() {
-    if (!appData.packing) appData.packing = { personal: [], common: [], electronics: [] };
-    const personal = ['Passport', 'Aadhar Card', 'Wallet', 'Sunglasses', 'Hat'];
-    const common = ['First Aid Kit', 'Umbrella', 'Water Bottle', 'Snacks', 'Power Bank'];
-    const electronics = ['Phone Charger', 'Camera', 'Laptop', 'Headphones', 'Adapter'];
-    const addItems = (category, items) => {
-      const current = appData.packing[category] || [];
-      const currentTexts = current.map(i => i.text);
-      items.forEach(text => {
-        if (!currentTexts.includes(text)) current.push({ text, done: false });
-      });
-      appData.packing[category] = current;
-    };
-    addItems('personal', personal);
-    addItems('common', common);
-    addItems('electronics', electronics);
-    updatePacking();
-    syncToFirebase();
-  }
-
-  function setBudget() {
-    const input = document.getElementById('budgetInput');
-    const val = parseFloat(input.value);
-    if (isNaN(val) || val < 0) { alert('Enter a valid budget.'); return; }
-    appData.budget = val;
-    input.value = '';
-    updateBudgetUI();
-    syncToFirebase();
-    showNotification('💰 Budget Set', `Trip budget: ₹${val.toFixed(2)}`, 'budget-set');
-  }
-
-  function handleReceiptChange() {
-    const fileInput = document.getElementById('expReceipt');
-    const removeBtn = document.getElementById('removeReceiptBtn');
-    if (fileInput.files.length > 0) { removeBtn.style.display = 'inline-block'; } else { removeBtn.style.display = 'none'; }
-  }
-
-  function removeReceipt() { document.getElementById('expReceipt').value = ''; document.getElementById('removeReceiptBtn').style.display = 'none'; }
-
-  function updateTrip() {
-    const name = document.getElementById('tripName').value.trim();
-    const date = document.getElementById('tripDate').value;
-    if (name) appData.tripName = name;
-    appData.tripDate = date;
-    document.getElementById('tripStatus').innerHTML = `📅 ${date} | ${appData.tripName}`;
-    syncToFirebase();
-    showNotification('✈️ Trip Updated', `${name} - ${date}`, 'trip-update');
-  }
-
-  function startNewTrip() {
-    if (!confirm('Clear all data and start a new trip?')) return;
-    if (isSyncing) { database.ref('trips/' + currentTripPin).off(); isSyncing = false; }
-    localStorage.removeItem('tripData');
-    localStorage.removeItem('tripPin');
-    currentTripPin = null;
-    appData = { tripName: 'New Trip', tripDate: new Date().toISOString().split('T')[0], participants: [], itinerary: [], expenses: [], packing: { personal: [], common: [], electronics: [] }, chatMessages: [], budget: 0, createdAt: Date.now() };
-    document.getElementById('tripStatus').innerHTML = '📅 No trip';
-    showAuthCard();
-    ['page-itinerary','page-expenses','page-settlements','page-weather','page-chart','page-chat','page-packing'].forEach(id => document.getElementById(id).innerHTML = '');
+    showToast('💬 Message sent');
   }
 
   // ============================================================
-  // 11. MAP & NAVIGATION (with ORS Router)
+  // 12. MAP & NAVIGATION (with ORS Router)
   // ============================================================
   function initMap() {
     if (mapInstance) { mapInstance.remove(); mapInstance = null; }
@@ -1202,7 +1266,6 @@
     updateMapMarkers();
   }
 
-  // ===== UPDATED: ORS Router =====
   function updateMapMarkers() {
     if (!mapInstance) return;
     mapMarkers.forEach(m => { if (mapInstance.hasLayer(m)) mapInstance.removeLayer(m); });
@@ -1237,10 +1300,9 @@
           show: false,
           createMarker: function() { return null; },
           lineOptions: { styles: [{ color: '#3b82f6', weight: 4, opacity: 0.8 }] },
-          // ----- ORS ROUTER -----
           router: L.Routing.openRouteService({
             apiKey: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjgxNWQ4MTc3NWI1MDQ0NDg4ZWQ3NDVlZDk3MDJmZDc4IiwiaCI6Im11cm11cjY0In0=',
-            profile: 'driving-car'  // or 'foot-walking', 'cycling-regular'
+            profile: 'driving-car'
           })
         }).addTo(mapInstance);
 
@@ -1336,7 +1398,7 @@
   }
 
   // ============================================================
-  // 12. SETTLEMENT
+  // 13. SETTLEMENT
   // ============================================================
   function calculateSettlements() {
     const container = document.getElementById('settlementTransactions');
@@ -1369,7 +1431,7 @@
   }
 
   // ============================================================
-  // 13. PDF EXPORT
+  // 14. PDF EXPORT
   // ============================================================
   function exportPDF() {
     const participants = appData.participants || [];
@@ -1441,7 +1503,7 @@
   }
 
   // ============================================================
-  // 14. WEATHER
+  // 15. WEATHER
   // ============================================================
   function fetchWeather() {
     const container = document.getElementById('weatherContainer');
@@ -1473,7 +1535,7 @@
   }
 
   // ============================================================
-  // 15. CHART
+  // 16. CHART
   // ============================================================
   function updateChart() {
     const canvas = document.getElementById('expenseChart');
@@ -1498,7 +1560,7 @@
   }
 
   // ============================================================
-  // 16. NAVIGATION (Sidebar + Sliding Tabs)
+  // 17. NAVIGATION
   // ============================================================
   function switchPage(pageId) {
     document.querySelectorAll('.sidebar .nav-item').forEach(el => el.classList.remove('active'));
@@ -1548,7 +1610,7 @@
   });
 
   // ============================================================
-  // 17. DELEGATION LISTENERS (for remove buttons)
+  // 18. DELEGATION LISTENERS (for remove buttons)
   // ============================================================
   document.addEventListener('click', function(e) {
     const partTarget = e.target.closest('[data-action="removePart"]');
@@ -1569,7 +1631,7 @@
   });
 
   // ============================================================
-  // 18. INITIALIZE
+  // 19. INITIALIZE
   // ============================================================
   loadTheme();
 
