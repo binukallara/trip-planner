@@ -816,6 +816,8 @@
       <div class="card"><h3><i class="fas fa-list-ul"></i> All Expenses</h3><div id="expenseList"></div></div>
     `;
     document.getElementById('addExpenseBtn').addEventListener('click', addExpense);
+    // ✅ FIX: Update the "Paid By" dropdown with the participant list
+    updateSelects();
     updateExpenses();
   }
 
