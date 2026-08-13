@@ -316,7 +316,7 @@
     .auth-card h2 i { color:var(--primary); margin-right:10px; }
     .auth-card p { color:var(--text-muted); margin-bottom:20px; }
     .auth-card .input-group { justify-content:center; }
-    .auth-card .input-group input { max-width:200px; text-align:center; font-size:24px; letter-spacing:8px; padding:12px; }
+    .auth-card .input-group input { max-width:250px; text-align:center; font-size:22px; letter-spacing:4px; padding:12px; text-transform:uppercase; }
     .auth-card .btn-group { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:12px; }
     .auth-card .btn-group button { padding:12px 28px; border:none; border-radius:30px; font-weight:600; font-size:15px; cursor:pointer; transition:0.2s; color:#fff; min-width:120px; }
     .auth-card .btn-group .primary-btn { background:var(--primary); }
@@ -661,7 +661,7 @@
   }
 
   // ============================================================
-  // 8. AUTH (Integrated into Dashboard)
+  // 8. AUTH (Integrated into Dashboard) - UPDATED (Alphanumeric PIN)
   // ============================================================
   function showAuthCard() {
     const page = document.getElementById('page-dashboard');
@@ -669,9 +669,9 @@
     page.innerHTML = `
       <div class="auth-card">
         <h2><i class="fas fa-plane-departure"></i> Join or Create a Trip</h2>
-        <p>Enter a 4-digit PIN to join an existing trip, or create a new one.</p>
+        <p>Enter your trip code (letters & numbers) to join, or create a new one.</p>
         <div class="input-group">
-          <input type="text" id="pinInput" maxlength="4" placeholder="Enter PIN" inputmode="numeric" pattern="[0-9]*">
+          <input type="text" id="pinInput" maxlength="10" placeholder="Enter trip code" inputmode="text" style="text-transform:uppercase;">
         </div>
         <div id="authError" class="error-msg"></div>
         <div class="btn-group">
@@ -683,13 +683,23 @@
     `;
     document.getElementById('joinTripBtn').addEventListener('click', joinTrip);
     document.getElementById('newTripBtn').addEventListener('click', createNewTrip);
-    document.getElementById('pinInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('joinTripBtn').click(); });
+    document.getElementById('pinInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') document.getElementById('joinTripBtn').click();
+    });
   }
 
   function setAuthError(msg) { const el = document.getElementById('authError'); if (el) el.textContent = msg; }
   function clearAuthError() { const el = document.getElementById('authError'); if (el) el.textContent = ''; }
 
-  function generatePin() { return String(Math.floor(1000 + Math.random() * 9000)); }
+  // New: 6-character alphanumeric PIN generator (A-Z, 0-9)
+  function generatePin() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
 
   function createNewTrip() {
     clearAuthError();
@@ -702,8 +712,11 @@
 
   function joinTrip() {
     clearAuthError();
-    const pin = document.getElementById('pinInput').value.trim();
-    if (!pin || pin.length !== 4 || isNaN(pin)) { setAuthError('Enter a valid 4-digit PIN.'); return; }
+    const pin = document.getElementById('pinInput').value.trim().toUpperCase();
+    if (!pin || pin.length < 4 || !/^[A-Z0-9]+$/.test(pin)) {
+      setAuthError('Enter a valid trip code (min 4 letters & numbers).');
+      return;
+    }
     database.ref('trips/' + pin).once('value')
       .then(snapshot => {
         if (!snapshot.exists()) { setAuthError('Trip not found.'); return; }
@@ -731,10 +744,10 @@
     modal.innerHTML = `
       <div class="auth-card" style="max-width:450px;border:2px solid var(--primary);">
         <h2><i class="fas fa-share-alt" style="color:var(--purple);"></i> Share Your Trip</h2>
-        <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">Share this PIN with your team.</p>
+        <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">Share this secure code with your team.</p>
         <div style="background:var(--bg-input);padding:16px;border-radius:16px;border:1px solid var(--border-color);margin-bottom:20px;">
-          <div style="color:var(--text-muted);font-size:13px;">🔑 Your Trip PIN</div>
-          <div style="font-size:42px;font-weight:700;color:var(--warning);letter-spacing:12px;">${pin}</div>
+          <div style="color:var(--text-muted);font-size:13px;">🔑 Your Trip Code</div>
+          <div style="font-size:36px;font-weight:700;color:var(--warning);letter-spacing:8px;font-family:monospace;">${pin}</div>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
           <button onclick="shareViaWhatsApp('${pin}')" style="padding:10px 20px;border:none;border-radius:30px;font-weight:600;color:#fff;background:#25D366;cursor:pointer;"><i class="fab fa-whatsapp"></i> WhatsApp</button>
@@ -747,8 +760,8 @@
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
   }
 
-  function shareViaWhatsApp(pin) { const url = window.location.href; const msg = encodeURIComponent(`✈️ Trip Planner\nJoin my trip with PIN: ${pin}\nLink: ${url}`); window.open(`https://wa.me/?text=${msg}`,'_blank'); }
-  function shareViaSMS(pin) { const url = window.location.href; const msg = encodeURIComponent(`Trip Planner: Join my trip with PIN: ${pin}\n${url}`); if (navigator.share) { navigator.share({ title: 'Trip Planner', text: `Join my trip with PIN: ${pin}\n${url}` }); } else { window.location.href = `sms:?body=${msg}`; } }
+  function shareViaWhatsApp(pin) { const url = window.location.href; const msg = encodeURIComponent(`✈️ Trip Planner\nJoin my trip with Code: ${pin}\nLink: ${url}`); window.open(`https://wa.me/?text=${msg}`,'_blank'); }
+  function shareViaSMS(pin) { const url = window.location.href; const msg = encodeURIComponent(`Trip Planner: Join my trip with Code: ${pin}\n${url}`); if (navigator.share) { navigator.share({ title: 'Trip Planner', text: `Join my trip with Code: ${pin}\n${url}` }); } else { window.location.href = `sms:?body=${msg}`; } }
 
   // ============================================================
   // 9. RENDER FUNCTIONS (Page Builders)
@@ -763,7 +776,7 @@
         <div class="input-group"><input type="text" id="participantInput" placeholder="Add participant name"><button id="addParticipantBtn"><i class="fas fa-user-plus"></i> Add</button></div>
         <div id="participantChips" class="chip-group"></div>
         <div style="margin-top:12px;color:var(--text-muted);font-size:13px;background:var(--bg-input);padding:8px 16px;border-radius:10px;border:1px solid var(--border-color);"><i class="fas fa-sync"></i> <span id="syncStatus">Real-time sync enabled 🔄</span></div>
-        ${currentTripPin ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px;">🔑 Active PIN: <strong>${currentTripPin}</strong></div>` : ''}
+        ${currentTripPin ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px;">🔑 Active Code: <strong style="font-family:monospace;letter-spacing:2px;">${currentTripPin}</strong></div>` : ''}
       </div>
       <div class="grid-2">
         <div class="card"><h3><i class="fas fa-route"></i> Quick Stats</h3><div style="display:flex;gap:12px;flex-wrap:wrap;"><div class="stat-box" style="flex:1;"><div class="label">Total Cost</div><div class="value blue" id="dashTotalCost">₹0</div></div><div class="stat-box" style="flex:1;"><div class="label">Members</div><div class="value" id="dashParticipantCount">0</div></div><div class="stat-box" style="flex:1;"><div class="label">Places</div><div class="value" id="dashPlaceCount">0</div></div></div></div>
